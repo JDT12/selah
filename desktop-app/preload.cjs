@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('selahDesktop', {
   version: info.version,
   // 'offline' (the library on this PC) or 'connect' (a Selah Cloud server)
   mode: info.mode,
+  // 'win32', 'darwin' or 'linux' (12.1): what the page calls the tray, the sign-in start, the lock's fingerprint
+  platform: info.platform,
   screenCount: () => ipcRenderer.sendSync('screens'),
   notify: call('notify'),
   openSlides: call('open-slides'),

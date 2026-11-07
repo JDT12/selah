@@ -4,6 +4,16 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '12.1.0',
+    date: '',
+    title: 'Selah Desktop for Mac and Linux',
+    items: [
+      'Selah Desktop now runs on a Mac (Apple Silicon or Intel) and on Linux, as well as Windows: your library on your own computer, working offline, or your Selah Cloud in its own window.',
+      'On a Mac, Selah waits in the menu bar so reminders arrive, and Touch ID can unlock it.',
+      'Move a library between Windows, Mac and Linux by downloading a backup and importing it on the other computer.',
+    ],
+  },
+  {
     version: '12.0.1',
     date: '2026-11-06',
     title: 'Selah Desktop: one library per PC',

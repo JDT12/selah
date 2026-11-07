@@ -1,7 +1,19 @@
-# Selah Desktop (12.0, Electron, desktop-app/): builds the Windows installer when a release tag (vX.Y.Z or
-# vX.Y.Z-beta.N) is pushed and uploads it, with latest.yml for the updater, to a DRAFT GitHub release for that tag.
-# Publish the draft after trying the installer: only then does electron-updater offer it to installed apps (betas only
-# to beta installs). Uses the workflow's own GITHUB_TOKEN; no other secrets until the installer is signed.
+# Selah Desktop (desktop-app/; 12.0 Windows, 12.1 Mac and Linux): when a release tag (vX.Y.Z or vX.Y.Z-beta.N) is
+# pushed, builds the Windows installer, the Mac apps (Apple Silicon and Intel: .dmg, and the .zip the updater uses)
+# and the Linux AppImage and .deb, and uploads them with the updater's files (latest.yml, latest-mac.yml,
+# latest-linux.yml) to one DRAFT GitHub release for that tag. Publish the draft after trying them: only then does
+# electron-updater offer it to installed apps (betas only to beta installs).
+#
+# Mac signing and notarizing (optional; without these the Mac build is unsigned and opens only after Open Anyway,
+# and Mac auto-update needs a signed app). Repository secrets:
+#   MAC_CERT_P12_BASE64     the Developer ID Application certificate exported as .p12, base64
+#   MAC_CERT_PASSWORD       its password
+#   and either an App Store Connect API key (preferred):
+#   APPLE_API_KEY_P8        the .p8 file's text
+#   APPLE_API_KEY_ID        its key ID
+#   APPLE_API_ISSUER        the issuer ID
+#   or an Apple ID:
+#   APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
 name: Selah Desktop
 
 on:
@@ -13,8 +25,28 @@ permissions:
   contents: write
 
 jobs:
-  windows:
-    runs-on: windows-latest
+  # One draft for the tag, made before any build: left to electron-builder, parallel uploads (and now three builds)
+  # can each make a draft for the same tag. A beta's draft is a pre-release already.
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          PRE=(); [[ "$TAG" == *-* ]] && PRE=(--prerelease)
+          gh release create "$TAG" --draft "${PRE[@]}" --title "${TAG#v}" --notes "Selah ${TAG#v}. What changed: CHANGELOG.md and docs/."
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -27,22 +59,43 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
-      # The draft is made here, before electron-builder: left to it, its parallel uploads can each make a draft for
-      # the same tag (the installer in one, the blockmap in another). A beta's draft is a pre-release already.
-      - name: Make the draft release
+      # Mac: the signing certificate and notarizing key, when the secrets are there.
+      - name: Mac signing
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          P12: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          if [ -n "$P12" ]; then
+            echo "CSC_LINK=$P12" >> "$GITHUB_ENV"
+            echo "CSC_KEY_PASSWORD=$P12_PASSWORD" >> "$GITHUB_ENV"
+            echo "Signing with the Developer ID certificate."
+          else
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "SELAH_MAC_ADHOC=1" >> "$GITHUB_ENV"
+            echo "::warning::No MAC_CERT_P12_BASE64 secret: the Mac build is unsigned (Open Anyway; no auto-update)."
+          fi
+          if [ -n "$API_KEY_P8" ]; then
+            printf '%s' "$API_KEY_P8" > "$RUNNER_TEMP/apple-api-key.p8"
+            echo "APPLE_API_KEY=$RUNNER_TEMP/apple-api-key.p8" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build and upload
+        working-directory: desktop-app
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ github.ref_name }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          gh release view "$TAG" >/dev/null 2>&1 && exit 0
-          PRE=(); [[ "$TAG" == *-* ]] && PRE=(--prerelease)
-          gh release create "$TAG" --draft "${PRE[@]}" --title "${TAG#v}" --notes "Selah ${TAG#v}. What changed: CHANGELOG.md and docs/."
-
-      - name: Build and upload the installer
-        working-directory: desktop-app
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
+          # Unset (empty) Apple variables would make electron-builder try to notarize with nothing.
+          for v in APPLE_API_KEY_ID APPLE_API_ISSUER APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            [ -z "${!v}" ] && unset "$v"
+          done
           npm ci --no-audit --no-fund
           node scripts/dist.mjs --publish always

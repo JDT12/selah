@@ -18,7 +18,7 @@ Free software for pastors, teachers and seminary students: notes, Bible study, t
 
 | | Selah Desktop | Selah Cloud |
 | --- | --- | --- |
-| For | One person on a Windows PC | A church, class or group, each person with their own Selah |
+| For | One person on a Windows PC, Mac or Linux computer | A church, class or group, each person with their own Selah |
 | Get it | [Download the installer](https://github.com/JDT12/selah/releases/latest) | [Install it on your own server](docs/cloud-install.md) with one command |
 | Your notes | On your PC, backed up automatically to a folder you choose | On your server, backed up every night |
 | From a phone or another computer | No (one PC; export to share) | Yes, in any browser or as an installed app |

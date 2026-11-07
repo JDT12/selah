@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, formatSize } from '../api.js';
-import { electron } from '../desktop.js';
+import { desktopWords, electron } from '../desktop.js';
 import { isDesktopEdition } from '../mode.js';
 import { useDialog } from './Dialogs.jsx';
 import Icon from './Icon.jsx';
@@ -9,7 +9,7 @@ import Icon from './Icon.jsx';
  * Settings for Selah Desktop (12.0, desktop-app/):
  * - DesktopBackups (Data & backup): automatic backups to a folder (server/desktopbackup.js), Restore from one,
  *   Import a library from any backup file. Restoring replaces the whole library; the app restarts its server.
- * - DesktopAppRow (General → App): start with Windows, the lock, Offline or a Cloud server, updates. Those live in
+ * - DesktopAppRow (General → App): start at sign-in, the lock, Offline or a Cloud server, updates. Those live in
  *   the app (window.selahDesktop), not the library.
  */
 
@@ -117,7 +117,7 @@ export function DesktopBackups() {
         <div className="about-row">
           <span className="muted">
             Selah can back up your whole library to a folder by itself. A folder in OneDrive, iCloud Drive or Dropbox
-            keeps a copy off this PC. Suggested: <strong>{s.suggested}</strong>
+            keeps a copy off this computer. Suggested: <strong>{s.suggested}</strong>
           </span>
           <span className="about-btns">
             <button className="btn btn-small btn-primary" onClick={useSuggested}>Use this folder</button>
@@ -177,7 +177,7 @@ export function DesktopBackups() {
       <h3>Move a library</h3>
       <div className="about-row">
         <span className="muted">
-          Import a library from a backup file: one from another PC, or a Selah Cloud backup (Settings → Data &amp; backup →
+          Import a library from a backup file: one from another computer, or a Selah Cloud backup (Settings → Data &amp; backup →
           Download a backup there). It replaces this library. To move this library to Selah Cloud, use Download a backup
           below and restore it there.
         </span>
@@ -203,7 +203,7 @@ function PassphraseDialog({ close, ask = false, title = 'Encrypt backups' }) {
       <h2>{title}</h2>
       <p className="modal-message">
         {ask ? 'Enter the passphrase it was made with.'
-          : 'New backups are encrypted with this passphrase. Selah keeps it on this PC to make them; to restore one anywhere else you’ll need it, and nobody can get it back for you.'}
+          : 'New backups are encrypted with this passphrase. Selah keeps it on this computer to make them; to restore one anywhere else you’ll need it, and nobody can get it back for you.'}
       </p>
       <input className="input" type="password" autoFocus placeholder="Passphrase" value={p} onChange={(e) => setP(e.target.value)} autoComplete="new-password" />
       {!ask && <input className="input" type="password" placeholder="Again" value={p2} onChange={(e) => setP2(e.target.value)} autoComplete="new-password" />}
@@ -241,27 +241,28 @@ export function DesktopAppRow() {
   };
 
   if (!s) return null;
+  const w = desktopWords();
   return (
     <>
       <div className="about-row">
-        <span className="muted">You’re using Selah Desktop {s.version}{s.server ? `, connected to ${s.server}` : ', with your library on this PC'}. It updates itself; the tray icon has Quick capture (Ctrl+Alt+N).</span>
+        <span className="muted">You’re using Selah Desktop {s.version}{s.server ? `, connected to ${s.server}` : ', with your library on this computer'}. It updates itself; the {w.tray} icon has Quick capture ({w.capture}).</span>
         <button className="btn btn-small" onClick={() => e.checkForUpdates()}>Check for updates</button>
       </div>
       <div className="about-row">
-        <span className="muted">Start Selah when you sign in to Windows (in the tray, so reminders arrive).</span>
+        <span className="muted">Start Selah when you sign in to {w.system} (in the {w.tray}, so reminders arrive).</span>
         <button className="btn btn-small" onClick={() => set({ startWithWindows: !s.startWithWindows })}>{s.startWithWindows ? 'Turn off' : 'Turn on'}</button>
       </div>
       {!s.server && (
         <div className="about-row">
           <span className="muted">
-            {s.lock ? `Selah asks for your PIN${s.lock.hello ? ' or Windows Hello' : ''} when it opens and after ${s.lock.idleMinutes} minutes away.`
-              : 'Lock Selah with a PIN (or Windows Hello) when it opens and when you’ve been away.'}
+            {s.lock ? `Selah asks for your PIN${s.lock.hello ? ` or ${w.hello}` : ''} when it opens and after ${s.lock.idleMinutes} minutes away.`
+              : `Lock Selah with a PIN${w.hello ? ` (or ${w.hello})` : ''} when it opens and when you’ve been away.`}
           </span>
           <button className="btn btn-small" onClick={setLock}>{s.lock ? 'Turn off the lock…' : 'Set up a lock…'}</button>
         </div>
       )}
       <div className="about-row">
-        <span className="muted">{s.server ? 'Use the library on this PC instead (Offline), or another Selah Cloud server.' : 'Use a Selah Cloud server instead of the library on this PC (yours stays here).'}</span>
+        <span className="muted">{s.server ? 'Use the library on this computer instead (Offline), or another Selah Cloud server.' : 'Use a Selah Cloud server instead of the library on this computer (yours stays here).'}</span>
         <button className="btn btn-small" onClick={switchServer}>{s.server ? 'Change…' : 'Connect to a server…'}</button>
       </div>
     </>
@@ -283,10 +284,10 @@ function PinDialog({ close, hello }) {
   return (
     <form className="stack-form" onSubmit={submit}>
       <h2>Lock Selah</h2>
-      <p className="modal-message">A PIN for Selah only (not your Windows PIN). It keeps someone at your PC out of your notes; it doesn’t encrypt them.</p>
+      <p className="modal-message">A PIN for Selah only (not your {desktopWords().system} password or PIN). It keeps someone at your computer out of your notes; it doesn’t encrypt them.</p>
       <input className="input" inputMode="numeric" type="password" autoFocus placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} />
       <input className="input" inputMode="numeric" type="password" placeholder="Again" value={pin2} onChange={(e) => setPin2(e.target.value.replace(/\D/g, ''))} />
-      {hello && <label className="check-row"><input type="checkbox" checked={useHello} onChange={(e) => setUseHello(e.target.checked)} /> Or unlock with Windows Hello (face, fingerprint or Windows PIN)</label>}
+      {hello && <label className="check-row"><input type="checkbox" checked={useHello} onChange={(e) => setUseHello(e.target.checked)} /> Or unlock with {desktopWords().helloLong}</label>}
       <label className="field-label">Lock after</label>
       <select className="input" value={idle} onChange={(e) => setIdle(Number(e.target.value))}>
         {[5, 15, 30, 60, 240].map((m) => <option key={m} value={m}>{m < 60 ? `${m} minutes` : `${m / 60} hour${m > 60 ? 's' : ''}`} away</option>)}
@@ -307,7 +308,7 @@ function ServerDialog({ close, current }) {
       <h2>Selah Cloud server</h2>
       <p className="modal-message">
         Your Selah address, e.g. https://you.example.org. You sign in there as in a browser, and sharing and the phone
-        remote work. The library on this PC stays where it is; choose Offline to go back to it.
+        remote work. The library on this computer stays where it is; choose Offline to go back to it.
       </p>
       <input className="input" autoFocus placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
       <div className="modal-actions">

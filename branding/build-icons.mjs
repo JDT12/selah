@@ -54,4 +54,11 @@ for (const size of sizes) imgs.push({ size, data: await png(icon, size) });
 write('desktop-app/build/icon.ico', ico(imgs));
 write('desktop-app/build/icon.png', await png(icon, 512));
 write('desktop-app/build/tray.png', await png(icon, 32));
+// 12.1 Mac: the app icon on Apple's grid (the tile 824 of 1024, centred), and the menu-bar icon as a black
+// "template" image (macOS recolors it for light and dark menu bars; the @2x one for Retina screens).
+const mac = icon.replace('viewBox="0 0 64 64">', 'viewBox="0 0 64 64"><g transform="translate(32 32) scale(.8583) translate(-32 -32)">').replace(/<\/svg>$/, '</g></svg>');
+write('desktop-app/build/icon-mac.png', await png(mac, 1024));
+const template = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 9 48 48"><path d="M10 44A22 22 0 0 1 54 44L52 44A20 16 0 0 0 12 44Z" fill="#000"/><circle cx="32" cy="39" r="5" fill="#000"/></svg>';
+write('desktop-app/build/trayTemplate.png', await png(template, 16));
+write('desktop-app/build/trayTemplate@2x.png', await png(template, 32));
 await browser.close();

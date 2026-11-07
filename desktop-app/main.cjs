@@ -1,25 +1,40 @@
-// Selah Desktop (12.0): the Windows app. Two ways to run, chosen on first start and changeable in Settings:
-//   Offline   Selah's own server runs here, on 127.0.0.1 only, with the library in %LOCALAPPDATA%\Selah. There's no
+// Selah Desktop (12.0 Windows, 12.1 Mac and Linux). Two ways to run, chosen on first start and changeable in Settings:
+//   Offline   Selah's own server runs here, on 127.0.0.1 only, with the library in the folder below. There's no
 //             sign-in: the app starts the server with a fresh key each launch and adds it to every request its own
 //             windows make (X-Selah-Desktop), so nothing else on the PC can use the server.
 //   Connect   the window shows a Selah Cloud server (https://…), signed in to like a browser.
-// Either way: a tray icon (closing the window keeps Selah running for reminders), Start with Windows, Windows
-// notifications, quick capture (Ctrl+Alt+N), the slides window full screen on a second monitor, and updates from
-// GitHub Releases. Offline adds an optional PIN / Windows Hello lock.
+// Either way: a tray (Windows, Linux) or menu-bar (Mac) icon (closing the window keeps Selah running for reminders),
+// start at sign-in, the system's notifications, quick capture (Ctrl+Alt+N; Cmd+Option+N on a Mac), the slides window
+// full screen on a second monitor, and updates from GitHub Releases. Offline adds an optional PIN lock, with Windows
+// Hello or Touch ID.
 'use strict';
 
 const { app, BrowserWindow, Menu, Notification, Tray, dialog, globalShortcut, ipcMain, nativeImage, net, powerMonitor,
-  safeStorage, screen, session, shell } = require('electron');
+  safeStorage, screen, session, shell, systemPreferences } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const netMod = require('node:net');
+const os = require('node:os');
 const path = require('node:path');
 
+const IS_MAC = process.platform === 'darwin';
+const IS_WIN = process.platform === 'win32';
+const IS_LINUX = process.platform === 'linux';
+
 // ---------- folders ----------
-// Everything in %LOCALAPPDATA%\Selah (not Roaming: a roaming profile would copy the library at every sign-in).
+// Everything in one Selah folder, kept on this computer:
+//   Windows  %LOCALAPPDATA%\Selah (not Roaming: a roaming profile would copy the library at every sign-in)
+//   Mac      ~/Library/Application Support/Selah
+//   Linux    $XDG_DATA_HOME/Selah, usually ~/.local/share/Selah (data, not ~/.config)
 // SELAH_DESKTOP_ROOT: a scratch folder for tests (never set in the installed app).
-const ROOT = process.env.SELAH_DESKTOP_ROOT || path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Selah');
+function rootFolder() {
+  if (process.env.SELAH_DESKTOP_ROOT) return process.env.SELAH_DESKTOP_ROOT;
+  if (IS_WIN) return path.join(process.env.LOCALAPPDATA || app.getPath('appData'), 'Selah');
+  if (IS_MAC) return path.join(app.getPath('appData'), 'Selah'); // ~/Library/Application Support
+  return path.join(process.env.XDG_DATA_HOME || path.join(os.homedir(), '.local', 'share'), 'Selah');
+}
+const ROOT = rootFolder();
 const DIRS = {
   root: ROOT,
   app: path.join(ROOT, 'app'), // Chromium's profile and app-settings.json
@@ -31,7 +46,7 @@ for (const d of Object.values(DIRS)) fs.mkdirSync(d, { recursive: true });
 app.setPath('userData', DIRS.app);
 app.setPath('sessionData', DIRS.app);
 app.setAppLogsPath(DIRS.logs);
-app.setAppUserModelId('app.selah.desktop');
+if (IS_WIN) app.setAppUserModelId('app.selah.desktop');
 
 const HIDDEN_ARG = '--hidden';
 const DEFAULT_PORT = 47821;
@@ -39,7 +54,13 @@ const SETTINGS_FILE = path.join(DIRS.app, 'app-settings.json');
 const SEALED_KEY = path.join(DIRS.data, 'secrets.key.sealed');
 const PLAIN_KEY = path.join(DIRS.data, 'wordpress.key');
 const SERVER_DIR = app.isPackaged ? path.join(process.resourcesPath, 'server') : path.resolve(__dirname, '..');
-const ICON = path.join(__dirname, 'build', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+const ICON = path.join(__dirname, 'build', IS_WIN ? 'icon.ico' : 'icon.png');
+// The Mac menu bar takes a black "template" image it recolors; Windows and Linux trays the app icon.
+const TRAY_ICON = path.join(__dirname, 'build', IS_MAC ? 'trayTemplate.png' : IS_WIN ? 'icon.ico' : 'tray.png');
+// What this computer's things are called, for messages.
+const TRAY_PLACE = IS_MAC ? 'in the menu bar at the top of the screen' : IS_WIN ? 'in the tray by the clock' : 'in the system tray';
+const CAPTURE_KEY = IS_MAC ? 'Command+Alt+N' : 'Control+Alt+N';
+const CAPTURE_LABEL = IS_MAC ? 'Cmd+Option+N' : 'Ctrl+Alt+N';
 
 // ---------- app settings (not in the library: they belong to this PC) ----------
 // { mode: 'offline' | 'connect', server, port, startWithWindows, lock: { hash, salt, hello, idleMinutes }, window }
@@ -69,11 +90,13 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => showMain());
 }
 
-// ---------- the secrets key, sealed by Windows ----------
+// ---------- the secrets key, sealed by the system (Windows DPAPI, the Mac keychain, the Linux keyring) ----------
 /** The 32-byte key server/secrets.js encrypts stored sign-ins with. A plain wordpress.key (a restore puts one
  * back) is sealed and removed first. */
 function secretKey() {
   if (!safeStorage.isEncryptionAvailable()) return null; // the server keeps a plain key file instead
+  // A Linux desktop with no keyring: Electron's fallback "seals" with a fixed password, no better than the plain file.
+  if (IS_LINUX && safeStorage.getSelectedStorageBackend?.() === 'basic_text') return null;
   if (fs.existsSync(PLAIN_KEY)) {
     const key = fs.readFileSync(PLAIN_KEY);
     if (key.length === 32) {
@@ -259,7 +282,7 @@ function createMain({ show = true } = {}) {
     main.hide();
     if (!settings.toldAboutTray) {
       saveSettings({ toldAboutTray: true });
-      notify('Selah is still running', 'It’s in the tray by the clock, so reminders still arrive. Right-click it to quit.');
+      notify('Selah is still running', `It’s ${TRAY_PLACE}, so reminders still arrive. ${IS_MAC ? 'Click it, or press Cmd+Q, to quit.' : 'Right-click it to quit.'}`);
     }
   });
   return main;
@@ -311,7 +334,9 @@ function openSlides(noteId, { otherScreen = false } = {}) {
   w.loadURL(`${home()}/#slides${noteId ? `/${noteId}` : ''}`);
   w.once('ready-to-show', () => {
     w.show();
-    if (onOther) w.setFullScreen(true);
+    // On a Mac, "simple" full screen covers that display without a Space of its own (no slide-over animation, and
+    // the controls stay reachable on the laptop's screen).
+    if (onOther) { if (IS_MAC) w.setSimpleFullScreen(true); else w.setFullScreen(true); }
     // The controls stay in front of the presenter.
     if (onOther && main && !main.isDestroyed()) main.focus();
   });
@@ -322,7 +347,7 @@ function openSlides(noteId, { otherScreen = false } = {}) {
 
 // ---------- notifications ----------
 function notify(title, body, sectionName = null) {
-  if (!Notification.isSupported()) throw new Error('Windows notifications aren’t available.');
+  if (!Notification.isSupported()) throw new Error('Notifications aren’t available on this computer.');
   const n = new Notification({ title, body, icon: ICON, silent: false });
   n.on('click', () => {
     showMain();
@@ -331,31 +356,60 @@ function notify(title, body, sectionName = null) {
   n.show();
 }
 
-// ---------- tray ----------
-function buildTray() {
-  const hotkey = globalShortcut.register('Control+Alt+N', showCapture);
-  if (!hotkey) log('Ctrl+Alt+N belongs to another program; Quick capture is in the tray menu.');
-  tray = new Tray(nativeImage.createFromPath(ICON));
-  tray.setToolTip('Selah');
-  const menu = () => Menu.buildFromTemplate([
-    { label: 'Quick capture', accelerator: hotkey ? 'Ctrl+Alt+N' : undefined, click: showCapture },
+// ---------- tray / menu bar ----------
+const START_LABEL = IS_WIN ? 'Start with Windows' : 'Open at login';
+let hotkey = false;
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Quick capture', accelerator: hotkey ? CAPTURE_KEY : undefined, click: showCapture },
     { label: 'Open Selah', click: showMain },
     { type: 'separator' },
-    { label: 'Start with Windows', type: 'checkbox', checked: startsWithWindows(), click: (i) => setStartWithWindows(i.checked) },
+    { label: START_LABEL, type: 'checkbox', checked: startsWithWindows(), click: (i) => { setStartWithWindows(i.checked); refreshTray(); } },
     { label: 'Check for updates', click: () => checkForUpdates(true) },
     { label: 'Open the logs folder', click: () => shell.openPath(DIRS.logs) },
     { type: 'separator' },
     { label: 'Quit Selah', click: () => { quitting = true; app.quit(); } },
   ]);
-  tray.on('click', () => tray.popUpContextMenu(menu()));
-  tray.on('right-click', () => tray.popUpContextMenu(menu()));
-  tray.on('double-click', showMain);
+}
+// Linux trays (StatusNotifier) only show a menu set ahead of time; clicks don't reach the app.
+function refreshTray() { if (tray && IS_LINUX) tray.setContextMenu(trayMenu()); }
+function buildTray() {
+  hotkey = globalShortcut.register(CAPTURE_KEY, showCapture);
+  if (!hotkey) log(`${CAPTURE_LABEL} belongs to another program; Quick capture is in the ${IS_MAC ? 'menu-bar' : 'tray'} menu.`);
+  const img = nativeImage.createFromPath(TRAY_ICON);
+  if (IS_MAC) img.setTemplateImage(true);
+  tray = new Tray(img);
+  tray.setToolTip('Selah');
+  if (IS_LINUX) { refreshTray(); return; }
+  tray.on('click', () => tray.popUpContextMenu(trayMenu()));
+  tray.on('right-click', () => tray.popUpContextMenu(trayMenu()));
+  if (IS_WIN) tray.on('double-click', showMain);
 }
 
-const startsWithWindows = () => app.getLoginItemSettings({ args: [HIDDEN_ARG] }).openAtLogin;
+// Start at sign-in. Windows: a Run entry with --hidden (opens to the tray). Mac: a login item (macOS passes no
+// arguments to those, so Selah asks whether this launch was one). Linux: an XDG autostart entry.
+const AUTOSTART = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'autostart', 'selah.desktop');
+function startsWithWindows() {
+  if (IS_LINUX) return fs.existsSync(AUTOSTART);
+  return app.getLoginItemSettings(IS_WIN ? { args: [HIDDEN_ARG] } : undefined).openAtLogin;
+}
 function setStartWithWindows(on) {
-  app.setLoginItemSettings({ openAtLogin: !!on, args: [HIDDEN_ARG] });
+  if (IS_LINUX) {
+    if (on) {
+      // An AppImage runs from a temporary mount: start the .AppImage file itself.
+      const exe = process.env.APPIMAGE || process.execPath;
+      fs.mkdirSync(path.dirname(AUTOSTART), { recursive: true });
+      fs.writeFileSync(AUTOSTART, `[Desktop Entry]\nType=Application\nName=Selah\nExec="${exe.replace(/"/g, '\\"')}" ${HIDDEN_ARG}\nX-GNOME-Autostart-enabled=true\n`);
+    } else fs.rmSync(AUTOSTART, { force: true });
+  } else {
+    app.setLoginItemSettings(IS_WIN ? { openAtLogin: !!on, args: [HIDDEN_ARG] } : { openAtLogin: !!on });
+  }
   saveSettings({ startWithWindows: !!on });
+}
+/** Opened at sign-in, so the window stays hidden (Selah waits in the tray or menu bar). */
+function startedHidden() {
+  if (process.argv.includes(HIDDEN_ARG)) return true;
+  try { return IS_MAC && !!app.getLoginItemSettings().wasOpenedAtLogin; } catch { return false; }
 }
 
 // ---------- the lock (Offline) ----------
@@ -386,7 +440,8 @@ function watchIdle() {
   }, 30_000).unref();
 }
 
-/** Windows Hello through Windows' own consent prompt (UserConsentVerifier), from PowerShell: no native module. */
+/** Windows Hello through Windows' own consent prompt (UserConsentVerifier), from PowerShell: no native module.
+ * On a Mac, Touch ID through Electron (systemPreferences). Linux has neither: the PIN only. */
 const HELLO_PS = (op) => `
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -398,8 +453,12 @@ ${op === 'check'
     : "Await ([Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync('Unlock Selah')) ([Windows.Security.Credentials.UI.UserConsentVerificationResult])"}
 `;
 function hello(op) {
+  if (IS_MAC) {
+    if (op === 'check') return Promise.resolve(systemPreferences.canPromptTouchID() ? 'Available' : null);
+    return systemPreferences.promptTouchID('unlock Selah').then(() => 'Verified', () => null);
+  }
   return new Promise((resolve) => {
-    if (process.platform !== 'win32') { resolve(null); return; }
+    if (!IS_WIN) { resolve(null); return; }
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', HELLO_PS(op)], { windowsHide: true, timeout: op === 'check' ? 15_000 : 120_000 },
       (err, stdout) => resolve(err ? null : String(stdout).trim()));
   });
@@ -463,12 +522,13 @@ function appSettingsView() {
     startWithWindows: startsWithWindows(),
     lock: settings.lock ? { hello: !!settings.lock.hello, idleMinutes: settings.lock.idleMinutes ?? 15 } : null,
     helloAvailable: helloAvailable === 'Available',
+    platform: process.platform,
     root: DIRS.root,
   };
 }
 
 function bridge() {
-  ipcMain.on('info', (e) => { e.returnValue = { mode: settings.mode ?? null, version: app.getVersion(), screens: screen.getAllDisplays().length }; });
+  ipcMain.on('info', (e) => { e.returnValue = { mode: settings.mode ?? null, version: app.getVersion(), platform: process.platform, screens: screen.getAllDisplays().length }; });
   ipcMain.on('screens', (e) => { e.returnValue = screen.getAllDisplays().length; });
   handle('notify', (_e, title, body, sectionName) => notify(String(title), String(body ?? ''), sectionName));
   handle('open-slides', (_e, noteId, opts) => openSlides(noteId == null ? null : Number(noteId), opts ?? {}));
@@ -561,7 +621,7 @@ async function begin() {
   if (settings.mode === 'offline') {
     // The window comes up at once with "Opening your library…" while the server starts (it takes a few seconds,
     // longer on the first start after an install or update, when Windows checks the new files).
-    if (!main || main.isDestroyed()) createMain({ show: !process.argv.includes(HIDDEN_ARG) });
+    if (!main || main.isDestroyed()) createMain({ show: !startedHidden() });
     main.loadFile(path.join(__dirname, 'pages', 'starting.html')).catch(() => {});
     try {
       await startServer();
@@ -575,13 +635,34 @@ async function begin() {
     }
   }
   locked = !!settings.lock && settings.mode !== 'connect';
-  if (!main || main.isDestroyed()) createMain({ show: !process.argv.includes(HIDDEN_ARG) });
+  if (!main || main.isDestroyed()) createMain({ show: !startedHidden() });
   await loadHome();
   if (!tray) buildTray();
 }
 
+/** A Mac app needs its menu bar: Edit's items are what make Cmd+C, Cmd+V, Cmd+Z and Cmd+A work in the page. */
+function macMenu() {
+  return Menu.buildFromTemplate([
+    { label: 'Selah', submenu: [
+      { role: 'about' },
+      { label: 'Check for Updates…', click: () => checkForUpdates(true) },
+      { type: 'separator' },
+      { label: 'Quick Capture', accelerator: 'Command+Alt+N', registerAccelerator: false, click: showCapture },
+      { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+      { type: 'separator' },
+      { label: 'Quit Selah', accelerator: 'Command+Q', click: () => { quitting = true; app.quit(); } },
+    ] },
+    { role: 'editMenu' },
+    { label: 'View', submenu: [{ role: 'reload' }, { type: 'separator' }, { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { role: 'windowMenu' },
+  ]);
+}
+
 app.whenReady().then(async () => {
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(IS_MAC ? macMenu() : null);
+  // Clicking Selah in the Dock brings the window back (closing it only hid it).
+  if (IS_MAC) app.on('activate', () => { if (settings.mode) showMain(); });
   bridge();
   watchIdle();
   setUpUpdates();

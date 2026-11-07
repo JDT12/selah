@@ -1,6 +1,8 @@
 // Gathers what Selah Desktop's installer carries for its local server into desktop-app/stage/server:
 // server/, shared/, extension/ (the clipper download), the built client (client/dist), and production node_modules
-// (npm ci --omit=dev, so ffmpeg-static fetches its Windows binary). Run from desktop-app: npm run stage.
+// (npm ci --omit=dev, so ffmpeg-static fetches the binary for this system). On a Mac, ffmpeg for both Apple Silicon
+// and Intel goes in desktop-app/stage/ffmpeg/darwin-<arch> too; after-pack.cjs gives each build its own.
+// Run from desktop-app: npm run stage.
 // The client must be built first (npm run build in the repo).
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -70,6 +72,24 @@ for (const pkg of fs.readdirSync(nm)) {
   for (const v of ['', '-simd', '-relaxedsimd']) for (const l of ['', '-lstm']) r(`tesseract.js-core/tesseract-core${v}${l}`);
   if (!fs.existsSync(path.join(nm, '@tesseract.js-data', 'eng', '4.0.0_best_int', 'eng.traineddata.gz'))) throw new Error('The OCR model is missing.');
   console.log('  packages load');
+}
+
+// Mac: one ffmpeg per architecture (ffmpeg-static's install script fetches for npm_config_arch).
+if (process.platform === 'darwin') {
+  const pkg = path.join(nm, 'ffmpeg-static');
+  const bin = path.join(pkg, 'ffmpeg');
+  const host = fs.readFileSync(bin);
+  for (const arch of ['arm64', 'x64']) {
+    fs.rmSync(bin, { force: true });
+    execSync('node install.js', { cwd: pkg, stdio: 'inherit', env: { ...process.env, npm_config_arch: arch, npm_config_platform: 'darwin' } });
+    const dir = path.resolve(here, '..', 'stage', 'ffmpeg', `darwin-${arch}`);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.copyFileSync(bin, path.join(dir, 'ffmpeg'));
+    fs.chmodSync(path.join(dir, 'ffmpeg'), 0o755);
+  }
+  fs.writeFileSync(bin, host);
+  fs.chmodSync(bin, 0o755);
+  console.log('  ffmpeg for arm64 and x64 in stage/ffmpeg');
 }
 
 const after = measure(out);

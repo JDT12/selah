@@ -32,6 +32,13 @@ const TYPES = {
   ppt: 'application/vnd.ms-powerpoint', pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 };
 
+/** What Selah Desktop's computer calls its things (12.1: Mac and Linux as well as Windows). */
+export function desktopWords(platform = electron()?.platform ?? 'win32') {
+  if (platform === 'darwin') return { system: 'your Mac', tray: 'menu bar', capture: 'Cmd+Option+N', hello: 'Touch ID', helloLong: 'Touch ID (your fingerprint)' };
+  if (platform === 'linux') return { system: 'your computer', tray: 'system tray', capture: 'Ctrl+Alt+N', hello: null, helloLong: null };
+  return { system: 'Windows', tray: 'tray', capture: 'Ctrl+Alt+N', hello: 'Windows Hello', helloLong: 'Windows Hello (face, fingerprint or Windows PIN)' };
+}
+
 /**
  * In the Windows app (7.3 and later), the Windows file picker in front of Selah's window: the page's own file input
  * could open behind it. Resolves to the chosen Files ([] when cancelled), or null where there's no such picker (a

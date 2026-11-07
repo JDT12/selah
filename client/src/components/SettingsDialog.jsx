@@ -392,7 +392,7 @@ function NotificationsRow() {
 }
 
 /**
- * Selah Desktop for Windows (12.0, desktop-app/): where to download it. The older Windows app (Tauri, before 12.0)
+ * Selah Desktop (12.0 Windows, 12.1 Mac and Linux; desktop-app/): where to download it. The older Windows app (Tauri, before 12.0)
  * still opens Selah but no longer updates, so it's pointed at the new one.
  */
 function WindowsAppRow() {
@@ -404,10 +404,13 @@ function WindowsAppRow() {
       </div>
     );
   }
-  if (!/Windows/i.test(navigator.userAgent)) return null;
+  // Phones and tablets have no Desktop app (iPads report a Mac, but have touch).
+  const ua = navigator.userAgent;
+  const system = /Windows/i.test(ua) ? 'Windows' : /Macintosh/i.test(ua) && navigator.maxTouchPoints < 2 ? 'Mac' : /Linux/i.test(ua) && !/Android/i.test(ua) ? 'Linux' : null;
+  if (!system) return null;
   return (
     <div className="about-row">
-      <span className="muted">Selah Desktop for Windows: its own window, a tray icon, quick capture, notifications, and slides full screen on a second monitor. Choose “On a Selah Cloud server” when it opens to use this Selah in it.</span>
+      <span className="muted">Selah Desktop for {system}: its own window, a {system === 'Mac' ? 'menu-bar' : 'tray'} icon, quick capture, notifications, and slides full screen on a second monitor. Choose “On a Selah Cloud server” when it opens to use this Selah in it.</span>
       <a className="btn btn-small" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download</a>
     </div>
   );

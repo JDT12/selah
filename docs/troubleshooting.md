@@ -5,7 +5,7 @@
 | Problem | What to do |
 | --- | --- |
 | "Selah couldn't start" | The log is in `%LOCALAPPDATA%\Selah\logs` (`server.log`). Another program on port 47821 is fine: Selah picks the next free one |
-| Reminders don't appear | Settings → General → Notifications → **Send a test**. If it's sent but nothing shows: Windows Settings → System → Notifications → Selah on, and Do not disturb off |
+| Reminders don't appear | Settings → General → Notifications → **Send a test**. If it's sent but nothing shows: Windows Settings → System → Notifications → Selah on, and Do not disturb off (Mac: System Settings → Notifications → Selah, and Focus off) |
 | Read-only on the second PC | The other PC still has your library: close Selah there, or **Take over** |
 | Forgot the lock PIN | Quit Selah, delete the `"lock"` entry from `%LOCALAPPDATA%\Selah\app\app-settings.json`, start it again. (The PIN keeps people out; it doesn't encrypt the notes.) |
 | Start over | Quit Selah and rename `%LOCALAPPDATA%\Selah`; it starts fresh. Rename it back to return |

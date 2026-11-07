@@ -62,6 +62,18 @@ export function syncFolders() {
   add('Dropbox', path.join(home, 'Dropbox'));
   add('Google Drive', path.join(home, 'Google Drive'));
   add('Google Drive', path.join(home, 'My Drive'));
+  // Mac (12.1): iCloud Drive's real folder, and the File Provider folders OneDrive, Dropbox and Google Drive use now.
+  if (process.platform === 'darwin') {
+    add('iCloud Drive', path.join(home, 'Library', 'Mobile Documents', 'com~apple~CloudDocs'));
+    const cloud = path.join(home, 'Library', 'CloudStorage');
+    let names = [];
+    try { names = fs.readdirSync(cloud); } catch { /* none */ }
+    for (const n of names.sort()) {
+      if (/^OneDrive/i.test(n)) add(/^OneDrive(-Personal)?$/i.test(n) ? 'OneDrive' : 'OneDrive for work or school', path.join(cloud, n));
+      else if (/^Dropbox/i.test(n)) add('Dropbox', path.join(cloud, n));
+      else if (/^GoogleDrive/i.test(n)) add('Google Drive', path.join(cloud, n, 'My Drive'));
+    }
+  }
   return found;
 }
 
