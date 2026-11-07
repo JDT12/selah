@@ -10,7 +10,6 @@ import * as auth from './auth.js';
 import { htmlToText } from './html.js';
 import { importPackage, readPackage } from './notepack.js';
 import { listBackups } from './desktopbackup.js';
-import { syncState } from './desktopsyncfs.js';
 import { unpackBackup } from './backupfile.js';
 import { offsiteAttachment, offsiteConfigured, offsiteDownload, offsiteSnapshots, offsiteState } from './offsite.js';
 
@@ -95,13 +94,6 @@ function backupFiles() {
   let auto = null;
   try { auto = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'desktop_backup'").get()?.value ?? 'null')?.folder; } catch { /* none */ }
   if (auto) for (const b of listBackups(auto)) if (!b.encrypted) out.push({ source: `file:${path.join(auto, b.file)}`, at: b.at, label: 'Automatic backup' });
-  const s = syncState();
-  if (s) {
-    const dir = path.join(s.folder, 'conflicts');
-    let names = [];
-    try { names = fs.readdirSync(dir).filter((n) => n.endsWith('.tar.gz')); } catch { /* none */ }
-    for (const n of names) out.push({ source: `file:${path.join(dir, n)}`, at: fs.statSync(path.join(dir, n)).mtimeMs, label: `Conflict copy (${n.replace(/^selah-|-\d{4}-.*$/g, '')})` });
-  }
   return out.sort((a, b) => b.at - a.at);
 }
 

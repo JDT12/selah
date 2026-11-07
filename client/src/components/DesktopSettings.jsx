@@ -174,7 +174,6 @@ export function DesktopBackups() {
           )}
         </>
       )}
-      <SyncSection />
       <h3>Move a library</h3>
       <div className="about-row">
         <span className="muted">
@@ -184,80 +183,6 @@ export function DesktopBackups() {
         </span>
         <button className="btn btn-small" onClick={importLibrary} disabled={busy}><Icon name="import" size={13} /> Import a library…</button>
       </div>
-    </>
-  );
-}
-
-/**
- * The library in a sync folder (server/desktopsync.js): for one person using Selah on two PCs, one at a time.
- */
-function SyncSection() {
-  const dialog = useDialog();
-  const [s, setS] = useState(null);
-  const load = useCallback(() => api.desktopSync().then(setS).catch(() => setS(null)), []);
-  useEffect(() => { load(); }, [load]);
-
-  const turnOn = async () => {
-    const folder = await electron()?.pickFolder({ title: 'Choose a folder for your library (in OneDrive, iCloud Drive, Dropbox…)' });
-    if (!folder) return;
-    try {
-      let r = await api.setDesktopSync(folder);
-      if (r.existing) {
-        const e = r.existing;
-        const use = await dialog.choose({
-          title: 'This folder already has a Selah library',
-          message: `Saved ${when(e.savedAt)}${e.by ? ` on ${e.by}` : ''}, with ${e.notes} notes. Which library should both PCs use?`,
-          options: [
-            { value: 'folder', label: 'The one in the folder (this PC’s is kept aside in Selah’s folder)' },
-            { value: 'mine', label: 'This PC’s library (it replaces the folder’s copy)' },
-          ],
-          okLabel: 'Use it',
-        });
-        if (!use) return;
-        r = await api.setDesktopSync(folder, use);
-      }
-      if (r.restart) { dialog.toast('Opening the library from the folder…', 'info', 30_000); await electron()?.restartServer(); return; }
-      dialog.toast('Your library is in the sync folder now');
-      load();
-    } catch (e) { dialog.toast(e.message, 'error', 8000); }
-  };
-  const turnOff = async () => {
-    if (!(await dialog.confirm({ title: 'Stop using the sync folder?', message: 'Your library stays on this PC as it is. The copy in the folder stays there too, but stops being updated from this PC.', okLabel: 'Stop' }))) return;
-    try { await api.stopDesktopSync(); load(); } catch (e) { dialog.toast(e.message, 'error'); }
-  };
-  const saveNow = async () => {
-    try { await api.saveDesktopSync(); dialog.toast('Saved to the folder'); load(); } catch (e) { dialog.toast(e.message, 'error'); }
-  };
-
-  if (!s) return null;
-  return (
-    <>
-      <h3>Use on two PCs</h3>
-      {!s.enabled ? (
-        <div className="about-row">
-          <span className="muted">
-            Keep your library in a folder OneDrive, iCloud Drive or Dropbox syncs (or on a USB stick), to use Selah on a
-            desktop and a laptop. One PC at a time: the other opens it read-only and can take over. Selah still works on
-            its own copy and saves to the folder every few minutes and when it closes. For two people at once, use Selah Cloud.
-          </span>
-          <button className="btn btn-small" onClick={turnOn}>Choose a folder…</button>
-        </div>
-      ) : (
-        <>
-          <div className="about-row">
-            <span className="muted">
-              Your library is kept in <strong>{s.folder}</strong>.{' '}
-              {s.role === 'reading' ? `Read-only here: ${s.readOnlyBy?.pc ?? 'another PC'} is using it.`
-                : s.lastSave?.ok ? `Last saved there ${when(s.lastSave.at)}.` : s.folderCopy ? `The copy there is from ${when(s.folderCopy.savedAt)}.` : ''}
-              {s.lastSave?.error ? ` The last save failed: ${s.lastSave.error}` : ''}
-            </span>
-            <span className="about-btns">
-              {s.role === 'editing' && <button className="btn btn-small" onClick={saveNow}>Save now</button>}
-              <button className="btn btn-small" onClick={turnOff}>Stop…</button>
-            </span>
-          </div>
-        </>
-      )}
     </>
   );
 }

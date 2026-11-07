@@ -3,7 +3,6 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 import { applyPendingRestore } from './desktoprestore.js';
-import { pullAtStart } from './desktopsyncfs.js';
 
 // Selah Desktop makes its library folder the first time (there's no separate disk to mount).
 if (config.edition === 'desktop' && !fs.existsSync(config.storageMarker)) {
@@ -16,16 +15,6 @@ if (config.edition === 'desktop') {
     if (r) console.log(`Restored the library from ${r.from}.`);
   } catch (e) {
     console.error(`Restoring the library failed: ${e.message}`);
-  }
-}
-// Selah Desktop with its library in a sync folder: a newer copy there becomes this PC's (server/desktopsyncfs.js).
-export let syncPulled = null;
-if (config.edition === 'desktop') {
-  try {
-    syncPulled = pullAtStart();
-    if (syncPulled) console.log(`Took the newer library copy from the sync folder (saved by ${syncPulled.from}).`);
-  } catch (e) {
-    console.error(`Taking the library from the sync folder failed: ${e.message}`);
   }
 }
 if (!fs.existsSync(config.storageMarker)) {

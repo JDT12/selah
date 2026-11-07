@@ -35,7 +35,6 @@ import { setTimeZone } from './time.js';
 import { setServerInfo } from './mode.js';
 import UpdateBanner from './components/UpdateBanner.jsx';
 import NoticeBanner from './components/NoticeBanner.jsx';
-import SyncBanner from './components/SyncBanner.jsx';
 import { WhatsNewCard, WhatsNewDialog } from './components/WhatsNew.jsx';
 import CommandPalette, { rememberNote } from './components/CommandPalette.jsx';
 import SidebarDialog from './components/SidebarDialog.jsx';
@@ -1159,7 +1158,6 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
       <div className="sidebar-backdrop mobile-only" onClick={() => setPane('list')} />
       <UpdateBanner />
       <NoticeBanner />
-      <SyncBanner />
       <WhatsNewCard onShowAll={() => dialog.open((c) => <WhatsNewDialog close={c} />)} />
       <Tour />
       <Sidebar

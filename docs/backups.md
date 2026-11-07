@@ -22,8 +22,7 @@
 - **Automatic backups** to a folder you choose (Settings → Data & backup): daily or weekly, the newest ten kept,
   optionally encrypted.
 - **Go back to a backup** replaces the whole library; the one you had is kept aside.
-- **Restore notes** brings notes back as copies: from the daily restore points, an automatic backup or a sync
-  conflict copy.
+- **Restore notes** brings notes back as copies: from the daily restore points or an automatic backup.
 - **Import a library** opens any backup file, including one downloaded from Selah Cloud.
 
 ## Keep these off the server

@@ -385,13 +385,6 @@ export const api = {
   runDesktopBackup: () => request('POST', '/api/desktop/backups/run', {}),
   desktopRestore: (body) => request('POST', '/api/desktop/restore', body),
   dismissDesktopRestored: () => request('DELETE', '/api/desktop/restored'),
-  // The library in a sync folder (server/desktopsync.js).
-  desktopSync: () => request('GET', '/api/desktop/sync'),
-  setDesktopSync: (folder, use) => request('PUT', '/api/desktop/sync', { folder, use }),
-  stopDesktopSync: () => request('DELETE', '/api/desktop/sync'),
-  saveDesktopSync: () => request('POST', '/api/desktop/sync/save', {}),
-  desktopSyncTakeOver: (force) => request('POST', '/api/desktop/sync/take-over', { force }),
-  desktopSyncConflictSeen: () => request('DELETE', '/api/desktop/sync/conflict'),
   calendar: (from, to) => request('GET', `/api/calendar${qs({ from, to })}`),
   createEvent: (body) => request('POST', '/api/events', body),
   updateEvent: (id, body) => request('PATCH', `/api/events/${id}`, body),

@@ -25,18 +25,11 @@ can't be restored, so keep it in a password manager.
 - **Lock**: Settings → General → App → **Set up a lock**: a PIN (and Windows Hello, where the PC has it), asked when
   Selah opens and after a while away.
 
-## Two PCs (a desktop and a laptop)
+## Another PC
 
-Settings → Data & backup → **Use on two PCs** → choose a folder that OneDrive, iCloud Drive or Dropbox syncs (or a
-USB stick). Do the same on the second PC and choose **The one in the folder**.
-
-- One PC edits at a time. The other opens your library **read-only** and says which PC has it.
-- **Take over** asks the other PC to save and hand over (a minute or two while the sync app catches up), then
-  **Edit here**. If the other PC is off or asleep, **Take over anyway**: anything it hadn't saved to the folder is
-  kept in the folder's `conflicts` folder, and Settings → Data & backup → Restore notes can bring notes back from it.
-- Selah never keeps its live database in the sync folder. It works on its own copy and saves to the folder every
-  few minutes and when it closes, so let it close normally before switching PCs.
-- For two people using Selah at the same time, use Selah Cloud.
+Selah Desktop keeps one library on one PC. To move it to another PC, Settings → Data & backup → **Download a
+backup**, then **Import a library** on the new PC. To work on notes, lessons, sermons or slides somewhere else, export
+them (Word, PDF, PowerPoint or a Selah file), or use Selah Cloud, which works from any computer or phone.
 
 ## Moving to Selah Cloud (or back)
 
@@ -51,6 +44,6 @@ USB stick). Do the same on the second PC and choose **The one in the folder**.
 | --- | --- |
 | Library (notes, attachments, daily restore points) | `%LOCALAPPDATA%\Selah\storage` |
 | App settings, logs | `%LOCALAPPDATA%\Selah\app`, `%LOCALAPPDATA%\Selah\logs` |
-| Library before the last restore or sync | `%LOCALAPPDATA%\Selah\storage-before-restore`, `storage-before-sync` |
+| Library before the last restore | `%LOCALAPPDATA%\Selah\storage-before-restore` |
 
 Uninstalling Selah leaves the library where it is.

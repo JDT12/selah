@@ -166,10 +166,9 @@ function stopServer() {
   return new Promise((resolve) => {
     const done = () => { serverStopping = false; resolve(); };
     proc.once('exit', done);
-    // Asked to finish its requests, save to the sync folder and close the database (server/index.js); killed if
-    // it hasn't in a minute.
+    // Asked to finish its requests and close the database (server/index.js); killed if it hasn't in 15 seconds.
     try { proc.send('shutdown'); } catch { proc.kill(); }
-    setTimeout(() => { try { proc.kill(); } catch { /* gone */ } }, 60_000).unref();
+    setTimeout(() => { try { proc.kill(); } catch { /* gone */ } }, 15_000).unref();
   });
 }
 

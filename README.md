@@ -21,7 +21,7 @@ Free software for pastors, teachers and seminary students: notes, Bible study, t
 | For | One person on a Windows PC | A church, class or group, each person with their own Selah |
 | Get it | [Download the installer](https://github.com/JDT12/selah/releases/latest) | [Install it on your own server](docs/cloud-install.md) with one command |
 | Your notes | On your PC, backed up automatically to a folder you choose | On your server, backed up every night |
-| From a phone or another computer | No (a synced folder for a second PC) | Yes, in any browser or as an installed app |
+| From a phone or another computer | No (one PC; export to share) | Yes, in any browser or as an installed app |
 
 The guides are at **[jdt12.github.io/selah](https://jdt12.github.io/selah/)** (also in [docs/](docs/index.md)):
 installing Desktop or Cloud, DNS and HTTPS, backups, updates and troubleshooting.

@@ -6203,4 +6203,3 @@ html.is-capture, html.is-capture body { height: 100%; background: var(--bg); }
 .stack-form .input { align-self: stretch; }
 .input-small { width: auto; min-width: 180px; padding: 4px 8px; }
 .settings-pane .about-row strong { overflow-wrap: anywhere; }
-.sync-banner { border-left-color: var(--accent, #34506b); } .sync-banner > .icon { color: var(--accent, #34506b); }

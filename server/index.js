@@ -49,8 +49,6 @@ import ocr from './ocr.js';
 import { addCornellTemplate } from './cornell.js';
 import { eventRoutes } from './events.js';
 import desktopBackups, { scheduleDesktopBackups, seedDesktopDemo } from './desktopbackup.js';
-import desktopSync, { startSync, syncGate } from './desktopsync.js';
-import { syncPulled } from './db.js';
 import tenant, { quotaCheck, startTenant } from './tenant.js';
 import sharing, { startSharing } from './sharing.js';
 import { securityHeaders } from './headers.js';
@@ -99,8 +97,6 @@ app.addHook('onRequest', async (req, reply) => {
 requestChecks(app);
 // Room for this upload? (tenant.js; only with a storage quota)
 quotaCheck(app);
-// Selah Desktop reading a library another PC is editing: changes refused (desktopsync.js).
-syncGate(app);
 
 // Security headers on every response (headers.js).
 securityHeaders(app);
@@ -165,7 +161,6 @@ await app.register(slides);
 await app.register(guide);
 await app.register(ocr);
 await app.register(desktopBackups);
-await app.register(desktopSync);
 await app.register(offsite);
 await app.register(backupDownload);
 await app.register(restorePoints);
@@ -206,8 +201,7 @@ let stopping = false;
 const shutdown = () => {
   if (stopping) return;
   stopping = true;
-  // Selah Desktop may be saving the library to its sync folder as it closes.
-  setTimeout(() => process.exit(0), config.edition === 'desktop' ? 55_000 : 10_000).unref();
+  setTimeout(() => process.exit(0), 10_000).unref();
   app.close().catch(() => {}).finally(async () => {
     try { (await import('./db.js')).db.close(); } catch { /* already closed */ }
     process.exit(0);
@@ -225,5 +219,4 @@ startSharing();
 scheduleRestorePoints(app.log);
 scheduleDesktopBackups(app.log);
 seedDesktopDemo(app, app.log).catch((e) => app.log.error(`Desktop demo: ${e.message}`));
-startSync(app.log, syncPulled);
 scheduleTrash(app.log);

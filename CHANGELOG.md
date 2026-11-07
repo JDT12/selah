@@ -4,6 +4,11 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [12.0.1] - 2026-11-06
+
+### Removed
+- **Use on two PCs** (Selah Desktop's library in a sync folder: `server/desktopsync.js`, `server/desktopsyncfs.js`, `SyncBanner.jsx`, `/api/desktop/sync`, its read-only gate and conflict copies in Restore notes): slow, complex, and not needed with export for notes, lessons, sermons and slides; to move a library, Download a backup and Import a library. A PC that had it on keeps its own library as it is; the copy in the folder is left alone. Desktop's server now stops within 10 seconds (it waited up to 55 for a last save to the folder).
+
 ## [12.0.0] - 2026-11-06
 
 Selah 12.0 (roadmap Phase 5): Selah Desktop, self-hosted Selah Cloud, the docs site and the fermata logo. Built on branch v12.

@@ -4,13 +4,21 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '12.0.1',
+    date: '2026-11-06',
+    title: 'Selah Desktop: one library per PC',
+    items: [
+      'Selah Desktop keeps your library on one PC. To move it to another, download a backup and import it there. To work on something elsewhere, export it: notes, lessons, sermons and slides all download for Word, PDF or PowerPoint.',
+      'Selah Desktop closes faster.',
+    ],
+  },
+  {
     version: '12.0.0',
     date: '2026-11-06',
     title: 'Selah Desktop, your own Selah Cloud, and a new logo',
     items: [
       'Selah Desktop for Windows: keep your library on your PC, with no account, working offline, or open your Selah Cloud in its own window. Download it from Settings → General → App.',
       'On your PC, Selah backs your library up by itself to a folder you choose, like your OneDrive, and can bring it all back, or just some notes, from any backup.',
-      'Use Selah Desktop on a desktop and a laptop: keep the library in a synced folder, and the other PC opens it read-only until you take over.',
       'Lock Selah Desktop with a PIN or Windows Hello, and present slides full screen on a projector while your controls stay on the laptop.',
       'Run Selah Cloud on your own server for your church or class: one install command, HTTPS with any domain, and step-by-step guides.',
       'A new logo: the fermata, music’s sign to pause and hold.',
