@@ -6,6 +6,7 @@
   "license": "AGPL-3.0-or-later",
   "description": "Selah Desktop: notes, Bible study, teaching and preaching on your own PC",
   "author": "Selah",
+  "homepage": "https://github.com/JDT12/selah",
   "main": "main.cjs",
   "scripts": {
     "stage": "node scripts/stage.mjs",
