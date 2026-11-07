@@ -47,6 +47,9 @@
       }
     ],
     "asar": true,
+    "electronLanguages": [
+      "en-US"
+    ],
     "win": {
       "target": [
         {

@@ -21,3 +21,9 @@ button:disabled { opacity: .55; cursor: default; }
 .error { color: var(--danger); min-height: 1.4em; margin: 8px 0 0; font-size: 14px; }
 .pin { font-size: 22px; letter-spacing: 6px; text-align: center; }
 [hidden] { display: none !important; }
+/* The window Selah shows at once while its server starts (starting.html). */
+.starting { width: min(360px, 100%); }
+.bar { height: 4px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.bar span { display: block; width: 40%; height: 100%; border-radius: 4px; background: var(--oak); animation: slide 1.2s ease-in-out infinite; }
+@keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+@media (prefers-reduced-motion: reduce) { .bar span { animation: none; width: 100%; opacity: .5; } }

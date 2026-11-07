@@ -1,0 +1,2 @@
+# Selah is LF everywhere (12.0.0): text files are stored and checked out with LF, whatever the OS settings.
+* text=auto eol=lf

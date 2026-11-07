@@ -27,6 +27,18 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
 
+      # The draft is made here, before electron-builder: left to it, its parallel uploads can each make a draft for
+      # the same tag (the installer in one, the blockmap in another). A beta's draft is a pre-release already.
+      - name: Make the draft release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 && exit 0
+          PRE=(); [[ "$TAG" == *-* ]] && PRE=(--prerelease)
+          gh release create "$TAG" --draft "${PRE[@]}" --title "${TAG#v}" --notes "Selah ${TAG#v}. What changed: CHANGELOG.md and docs/."
+
       - name: Build and upload the installer
         working-directory: desktop-app
         env:

@@ -4,6 +4,8 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [12.0.0] - 2026-11-06
+
 Selah 12.0 (roadmap Phase 5): Selah Desktop, self-hosted Selah Cloud, the docs site and the fermata logo. Built on branch v12.
 
 ### Added
@@ -23,6 +25,7 @@ Selah 12.0 (roadmap Phase 5): Selah Desktop, self-hosted Selah Cloud, the docs s
 - Cloud tenants no longer get their own off-site backup settings (the admin console backs every Selah up); Data & backup says so.
 - Settings → General → App on Windows links to Selah Desktop's download; the older Windows app is pointed at it. `SOURCE_URL` is the new public repository.
 - Closing the server ends live-update streams first (it had waited about 55 seconds for them).
+- **Selah Desktop installs and opens faster**: the window comes up at once with "Opening your library…" (`pages/starting.html`) while the local server starts, instead of after it; the installer leaves out what the server never reads (the page's own fonts, the browser copies of the OCR engines, the second English OCR model, the second HEIC build, docs, type definitions, source maps, tests, and Chromium's other languages): 210 → 162 MB and about 6,400 → 2,400 files to unpack. `scripts/stage.mjs` checks every server package still loads after trimming.
 
 ### Removed
 - The Tauri Windows app (`desktop/`), `npm run desktop:publish` and the server's `/desktop/*` and `/api/desktop` routes.
@@ -34,6 +37,8 @@ Selah 12.0 (roadmap Phase 5): Selah Desktop, self-hosted Selah Cloud, the docs s
 
 ### Changed (release tooling)
 - Settings → About → What's new leaves out an entry for a release that hasn't shipped yet.
+- Desktop's workflow makes the tag's draft release (a pre-release for a beta) before electron-builder uploads: its parallel uploads had made two drafts for one tag, the installer and `latest.yml` in one and the blockmap in the other.
+- The repository is LF throughout: `.gitattributes` (`* text=auto eol=lf`), and 21 files committed with Windows line endings converted (no other changes).
 
 ## [11.0.0] - 2026-11-06
 

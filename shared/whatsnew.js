@@ -5,7 +5,7 @@
 export const WHATS_NEW = [
   {
     version: '12.0.0',
-    date: '',
+    date: '2026-11-06',
     title: 'Selah Desktop, your own Selah Cloud, and a new logo',
     items: [
       'Selah Desktop for Windows: keep your library on your PC, with no account, working offline, or open your Selah Cloud in its own window. Download it from Settings → General → App.',

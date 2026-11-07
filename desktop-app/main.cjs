@@ -560,6 +560,10 @@ function bridge() {
 // ---------- start ----------
 async function begin() {
   if (settings.mode === 'offline') {
+    // The window comes up at once with "Opening your library…" while the server starts (it takes a few seconds,
+    // longer on the first start after an install or update, when Windows checks the new files).
+    if (!main || main.isDestroyed()) createMain({ show: !process.argv.includes(HIDDEN_ARG) });
+    main.loadFile(path.join(__dirname, 'pages', 'starting.html')).catch(() => {});
     try {
       await startServer();
       installKeyHeader();
