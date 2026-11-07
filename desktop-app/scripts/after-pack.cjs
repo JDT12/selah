@@ -12,7 +12,10 @@ exports.default = async function afterPack(ctx) {
     : path.join(ctx.appOutDir, 'resources');
   const to = path.join(resources, 'server', 'node_modules');
   if (!fs.existsSync(from)) throw new Error('stage/server/node_modules is missing: run npm run stage first.');
-  fs.cpSync(from, to, { recursive: true });
+  // No .bin folders (command shims the server never runs), and links copied as the files they point to: cpSync
+  // makes relative links absolute, pointing back into stage/, which a Mac's codesign rejects ("invalid destination
+  // for symbolic link in bundle") and which would be broken on every installed computer anyway.
+  fs.cpSync(from, to, { recursive: true, dereference: true, filter: (src) => path.basename(src) !== '.bin' });
   if (mac) {
     const arch = { 1: 'x64', 3: 'arm64' }[ctx.arch] ?? String(ctx.arch);
     const bin = path.join(stage, 'ffmpeg', `darwin-${arch}`, 'ffmpeg');
