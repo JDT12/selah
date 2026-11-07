@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Selah Clipper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <img src="icons/icon32.png" alt="" width="26" height="26">
+    <span class="wordmark">Selah</span>
+    <span class="sub">Clipper</span>
+  </header>
+
+  <section id="pair" hidden>
+    <h1>Connect to Selah</h1>
+    <ol>
+      <li>In Selah, open <strong>Settings → Browser extension</strong>.</li>
+      <li>Click <strong>Connect a browser…</strong> and type the code here.</li>
+    </ol>
+    <form id="pair-form">
+      <input id="code" class="input code" placeholder="Code" autocomplete="off" maxlength="8" aria-label="Pairing code">
+      <button class="btn primary" type="submit">Connect</button>
+    </form>
+    <p class="error" id="pair-error" role="alert"></p>
+  </section>
+
+  <section id="clip" hidden>
+    <div class="dest" role="tablist" aria-label="Where to save">
+      <button type="button" role="tab" data-dest="notes" aria-selected="true">Notes</button>
+      <button type="button" role="tab" data-dest="bank" aria-selected="false">Sermon bank</button>
+    </div>
+    <div id="notes-box">
+    <div class="kinds" role="radiogroup" aria-label="What to save">
+      <button type="button" role="radio" data-kind="article">Article</button>
+      <button type="button" role="radio" data-kind="selection">Selection</button>
+      <button type="button" role="radio" data-kind="bookmark">Bookmark</button>
+      <button type="button" role="radio" data-kind="screenshot" title="What you can see of the page">Screen</button>
+      <button type="button" role="radio" data-kind="area">Area</button>
+    </div>
+    <p class="hint" id="kind-hint"></p>
+
+    <label class="field">Title
+      <input id="title" class="input">
+    </label>
+
+    <div class="where">
+      <label class="field grow">Save to
+        <select id="notebook" class="input"></select>
+      </label>
+      <label class="check"><input type="checkbox" id="append"> Add to a note</label>
+    </div>
+    <div id="append-box" hidden>
+      <input id="note-search" class="input" placeholder="Find a note…" aria-label="Find a note">
+      <div id="note-results" class="results" role="listbox"></div>
+    </div>
+
+    <label class="field">Tags
+      <input id="tags" class="input" placeholder="Separate with commas" list="tag-list">
+      <datalist id="tag-list"></datalist>
+    </label>
+    <label class="field">Your note
+      <textarea id="comment" class="input" rows="2" placeholder="Why you saved it (optional)"></textarea>
+    </label>
+    </div>
+
+    <div id="bank-box" hidden>
+      <p class="hint" id="bank-hint">The text you selected, kept with a link to this page.</p>
+      <div class="where">
+        <label class="field">Kind
+          <select id="bank-kind" class="input">
+            <option value="illustration">Illustration</option>
+            <option value="quote">Quote</option>
+            <option value="scripture">Scripture</option>
+            <option value="application">Application</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label class="field grow">Title
+          <input id="bank-title" class="input" placeholder="Optional">
+        </label>
+      </div>
+      <label class="field">For a sermon
+        <select id="bank-sermon" class="input"><option value="">None, just the bank</option></select>
+      </label>
+      <div class="where">
+        <label class="field grow">Topics
+          <input id="bank-topics" class="input" placeholder="Commas between" list="topic-list">
+          <datalist id="topic-list"></datalist>
+        </label>
+        <label class="field grow">Passage
+          <input id="bank-passage" class="input" placeholder="Found in the text">
+        </label>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn primary" id="save" type="button">Save</button>
+      <span class="status" id="status" role="status"></span>
+    </div>
+    <p class="update" id="update" hidden>A newer clipper is ready: download it from Selah (Settings → Browser extension).</p>
+  </section>
+
+  <footer>
+    <span><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> clips without opening this</span>
+    <button type="button" class="link" id="disconnect" hidden>Disconnect</button>
+  </footer>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

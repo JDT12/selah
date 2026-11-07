@@ -1,0 +1,83 @@
+{
+  "name": "selah-desktop",
+  "productName": "Selah",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "Selah Desktop: notes, Bible study, teaching and preaching on your own PC",
+  "author": "Selah",
+  "main": "main.cjs",
+  "scripts": {
+    "stage": "node scripts/stage.mjs",
+    "start": "electron .",
+    "dist": "node scripts/dist.mjs"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0"
+  },
+  "allowScripts": {
+    "electron@44.9.3": true,
+    "electron-winstaller@5.4.0": false
+  },
+  "build": {
+    "appId": "app.selah.desktop",
+    "productName": "Selah",
+    "copyright": "Selah contributors, AGPL-3.0-or-later",
+    "directories": {
+      "output": "dist-installer",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "pages/**",
+      "build/icon.ico",
+      "build/icon.png",
+      "build/tray.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "stage/server",
+        "to": "server"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "Selah-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "runAfterFinish": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Selah",
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "JDT12",
+        "repo": "selah",
+        "releaseType": "draft"
+      }
+    ],
+    "afterPack": "scripts/after-pack.cjs"
+  }
+}

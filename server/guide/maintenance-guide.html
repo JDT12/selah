@@ -1,0 +1,186 @@
+<p><em>Looking after the Selah server ({{SERVER}}): starting and stopping it, updates, backups, and what to do when something's wrong. Every heading folds.</em></p>
+<div data-callout="info"><p>This guide opens read-only, and Selah updates it with each new version. The commands go in a terminal on the server (SSH in as the account Selah runs under). The full rebuild runbook is <code>DISASTER-RECOVERY.md</code> in the app folder.</p></div>
+
+<h1>The selah command</h1>
+<p>One command for the everyday jobs. It works from any folder.</p>
+<table><tbody>
+<tr><th><p>Command</p></th><th><p>What it does</p></th></tr>
+<tr><td><p><code>selah check</code></p></td><td><p>Checks everything Selah needs: running, answering, starts at boot, the notes disk, backups. Start here when something seems wrong.</p></td></tr>
+<tr><td><p><code>selah status</code></p></td><td><p>Whether the service is running, and since when.</p></td></tr>
+<tr><td><p><code>selah stop</code></p></td><td><p>Stops Selah, for maintenance. It still starts again at the next boot.</p></td></tr>
+<tr><td><p><code>selah start</code></p></td><td><p>Starts it and waits until it answers.</p></td></tr>
+<tr><td><p><code>selah restart</code></p></td><td><p>Stop and start, e.g. after changing a setting in the service or a certificate.</p></td></tr>
+<tr><td><p><code>selah logs</code></p></td><td><p>The last 60 lines of its log. <code>selah logs 300</code> shows more; <code>selah logs -f</code> follows it live (Ctrl+C to stop).</p></td></tr>
+<tr><td><p><code>selah update</code></p></td><td><p>Gets the latest code from GitHub, builds it and restarts. Notes aren't touched.</p></td></tr>
+<tr><td><p><code>selah backup</code></p></td><td><p>Backs up now: a local copy, then the encrypted off-site copy if it's set up (both happen every night anyway).</p></td></tr>
+<tr><td><p><code>selah version</code></p></td><td><p>The version installed.</p></td></tr>
+</tbody></table>
+<p>If <code>selah</code> isn't found (a rebuilt server), run <code>bash scripts/install-service.sh</code> in the app folder; it installs the service and the command.</p>
+
+<h1>Starting at boot</h1>
+<ul>
+<li><p>Selah runs as a systemd <strong>user</strong> service called <code>note-app</code>. It's <strong>enabled</strong> (starts at boot) and the account has <strong>linger</strong> on (runs without anyone logged in). Nothing needs doing after a reboot.</p></li>
+<li><p>To confirm after a reboot: <code>selah check</code>. Every line should have a ✓, and "server up since" shows when the machine started.</p></li>
+<li><p>If it ever crashes, systemd restarts it after 3 seconds.</p></li>
+<li><p>If linger has been turned off, Selah stops when you log out. Turn it back on with <code>sudo loginctl enable-linger $USER</code> (it needs sudo, so run it yourself).</p></li>
+<li><p>If the notes disk doesn't mount at boot, Selah refuses to start rather than open an empty notebook; <code>selah check</code> says so. See "The notes disk".</p></li>
+</ul>
+
+<h1>Maintenance</h1>
+<h2>Stopping for maintenance</h2>
+<ol>
+<li><p><code>selah backup</code>, so there's a fresh copy.</p></li>
+<li><p>Finish what you're typing (on every device), then <code>selah stop</code>. Until it's back, Selah's pages and the Windows app can't reach the server.</p></li>
+<li><p>Do the work (disk, operating system, moving files).</p></li>
+<li><p><code>selah start</code>, then <code>selah check</code>.</p></li>
+</ol>
+<h2>Operating system updates</h2>
+<ul>
+<li><p>On Debian/Ubuntu: <code>sudo apt update &amp;&amp; sudo apt upgrade</code>, then reboot if it asks (<code>sudo reboot</code>). Selah starts by itself; check with <code>selah check</code>.</p></li>
+<li><p>Node.js is separate from the system: it lives in <code>~/.local/node</code> and the service uses <code>~/.local/node/current/bin/node</code>.</p></li>
+</ul>
+<h2>Updating Selah</h2>
+<ul>
+<li><p>Releases are usually built and restarted for you. To bring in code pushed to GitHub from elsewhere: <code>selah update</code>.</p></li>
+<li><p>It stops if the app folder has uncommitted changes, and only reinstalls packages when they changed.</p></li>
+<li><p>After an update, open pages show a banner: click <strong>Reload</strong>. The Windows app updates itself separately (tray menu → Check for updates).</p></li>
+</ul>
+
+<h1>Backups</h1>
+<ul>
+<li><p><strong>Every night</strong> at about 03:15 a backup of the database and every attachment goes to <code>{{DATA}}/backups</code> on the system disk (the newest 14 are kept). <code>selah backup</code> makes one now (with the off-site copy).</p></li>
+<li><p><strong>Off-site</strong>: after the nightly backup, an encrypted copy goes to OneDrive (Settings → Data &amp; backup → Off-site backup). Its health is on the dashboard's Backups widget. Keep the backup passphrase off this server.</p></li>
+<li><p><strong>Test the passphrase</strong> every few months (the widget reminds you).</p></li>
+</ul>
+<h2>Restoring from a local backup</h2>
+<p>For a damaged database or a big mistake, on this server:</p>
+<pre><code>selah stop
+cd {{APP}}
+mkdir /tmp/restore &amp;&amp; tar xzf {{DATA}}/backups/note-app-YYYY-MM-DD-HHMM.tar.gz -C /tmp/restore
+cp /tmp/restore/notes.db {{NOTES}}/notes.db &amp;&amp; rm -f {{NOTES}}/notes.db-wal {{NOTES}}/notes.db-shm
+rsync -a /tmp/restore/files/ {{NOTES}}/files/
+selah start
+rm -rf /tmp/restore</code></pre>
+<p>For a single note, you rarely need this: try the note's <strong>Version history</strong> (⋯ menu) or the Trash first.</p>
+<h2>If the server is lost</h2>
+<p>Follow <code>DISASTER-RECOVERY.md</code> (in the app folder and on GitHub): a new server, the code from GitHub, then <code>npm run restore</code> brings everything back from OneDrive. Rehearse it now and then; the runbook's last section shows how without touching the real app.</p>
+
+<h1>The notes disk</h1>
+<ul>
+<li><p>The database and attachments live on their own disk, mounted at <code>{{NOTES}}</code>. Backups and certificates stay on the system disk, so losing one disk doesn't lose both.</p></li>
+<li><p><code>selah check</code> shows whether it's mounted and how much space is free. Settings → Data &amp; backup → Storage shows what uses the space.</p></li>
+<li><p>If it isn't mounted after a boot: <code>sudo mount -a</code>, then <code>selah start</code>. If it still won't mount, check the disk with your hypervisor or <code>sudo dmesg | tail</code>.</p></li>
+</ul>
+
+<h1>When something's wrong</h1>
+<table><tbody>
+<tr><th><p>What you see</p></th><th><p>What to do</p></th></tr>
+<tr><td><p>The page won't load, or the app says it can't reach the server</p></td><td><p><code>selah check</code>. If it isn't running: <code>selah start</code>. If it won't start: <code>selah logs</code> shows why.</p></td></tr>
+<tr><td><p>"Not secure" in the browser</p></td><td><p>That device doesn't trust Selah's certificate yet: Settings → Security → Trust this device. Use the server's name, not a new IP address.</p></td></tr>
+<tr><td><p>Forgot the password</p></td><td><p>In the app folder: <code>npm run set-password</code> (12 characters or more). Every device is signed out.</p></td></tr>
+<tr><td><p>Lost the phone with the authenticator app, and the recovery codes</p></td><td><p>In the app folder: <code>npm run reset-two-step</code>. Sign in with the password, then turn two-step sign-in on again in Settings → Security.</p></td></tr>
+<tr><td><p>"Too many failed attempts"</p></td><td><p>Wait 15 minutes. Settings → Security → Activity (from another signed-in device) shows the addresses.</p></td></tr>
+<tr><td><p>Notes disk not mounted</p></td><td><p>See "The notes disk".</p></td></tr>
+<tr><td><p>Disk full</p></td><td><p><code>df -h</code>. Old local backups are pruned to 14; Settings → Data &amp; backup → Storage and the Attachments page show large files.</p></td></tr>
+<tr><td><p>A change didn't appear after an update</p></td><td><p>Click Reload on the update banner, or refresh the page. In the Windows app: tray → Quit, then open it again.</p></td></tr>
+<tr><td><p>Reminders don't arrive</p></td><td><p>Settings → General → Notifications → Send a test. Focus mode skips reminders.</p></td></tr>
+</tbody></table>
+
+<h1>Security settings on the server</h1>
+<p>Set these in the service's environment (<code>systemctl --user edit note-app</code>) only when the setup changes, for example when Selah moves behind a proxy with a public certificate:</p>
+<table><tbody>
+<tr><th><p>Setting</p></th><th><p>What it does</p></th></tr>
+<tr><td><p><code>NOTEAPP_HSTS=1</code></p></td><td><p>Tells browsers to use HTTPS only, for a year. Only with a publicly trusted certificate: with the home certificate, a device that doesn't trust it yet couldn't click through the warning.</p></td></tr>
+<tr><td><p><code>NOTEAPP_TRUST_PROXY</code></p></td><td><p><code>true</code>, a number of proxies, or their addresses: behind a reverse proxy, use the visitor's address from it (for the devices list, the log and the failed-attempt limits).</p></td></tr>
+<tr><td><p><code>NOTEAPP_FETCH_ALLOW</code></p></td><td><p>Host names (or host:port) on the home network Selah may fetch from, such as a WordPress site at home. Otherwise clipped pages, images, calendar feeds and WordPress are never fetched from private addresses.</p></td></tr>
+<tr><td><p><code>NOTEAPP_RATE_LIMIT</code></p></td><td><p>Requests a minute from one address before it's slowed down (2400).</p></td></tr>
+</tbody></table>
+
+<h1>Hosting Selah for others (6.0)</h1>
+<p>Besides your own Selah, this server can host a Selah for each person you invite (a <em>tenant</em>), each at its own address with its own notes, sign-in and backups, looked after from the <strong>admin console</strong>. Your own Selah keeps running as it is.</p>
+<h2>How it fits together</h2>
+<ul>
+<li><p><strong>The gateway</strong> (Caddy, the <code>selah-gateway</code> service) holds the certificate and sends <code>admin.&lt;domain&gt;</code> to the admin console and <code>&lt;name&gt;.&lt;domain&gt;</code> to that tenant. The console answers only from the allowed addresses (until you list some: home and private networks at home, only the server itself on a cloud server).</p></li>
+<li><p><strong>The admin console</strong> (the <code>selah-admin</code> service) has its own password and requires two-step sign-in. It creates tenants, sends setup links, checks every tenant each minute (restarting one that stopped), copies their security logs, runs the nightly host backup and moves tenants to new versions.</p></li>
+<li><p><strong>Each tenant</strong> runs as its own service (<code>selah-tenant-&lt;name&gt;</code>; on a cloud server, a Docker container) with limits on storage, upload size, memory, processor and job time. Tenants can't reach each other or the console.</p></li>
+<li><p>You never know a tenant's password: their setup link has them choose it and set up two-step sign-in. A <strong>reset link</strong> handles a forgotten password or a lost phone. The console has no way to read anyone's notes.</p></li>
+</ul>
+<h2>Setting it up at home</h2>
+<pre><code>cd {{APP}}
+npm run install-caddy
+npm run admin -- init --domain selah.example.lan
+npm run admin -- set-password
+npm run admin -- install</code></pre>
+<p>The domain needs a wildcard DNS entry (<code>*.selah.example.lan</code>) pointing at this server. At home the gateway listens on port 9443 with a wildcard certificate from the home CA, so devices that trust Selah already trust it. Then open <code>https://admin.&lt;domain&gt;:9443</code>, sign in and turn on two-step sign-in.</p>
+<h2>A cloud server (6.0.1)</h2>
+<p>On a rented server (a VPS with Ubuntu 24.04 or newer) tenants run as Docker containers, the gateway listens on port 443, and the certificate is a Let's Encrypt wildcard that Caddy gets and renews itself, proving the domain through Cloudflare DNS.</p>
+<p><strong>Once, when the server is new</strong> (as the <code>ubuntu</code> user, with your SSH key added): SSH keys only (a file in <code>/etc/ssh/sshd_config.d/</code> with <code>PasswordAuthentication no</code>, <code>PermitRootLogin no</code>; check cloud-init's own file there doesn't turn passwords back on), the firewall on with only SSH (<code>sudo ufw limit 22/tcp</code>, <code>sudo ufw enable</code>), fail2ban, and automatic security updates. The firewall's limit refuses a sixth SSH connection within 30 seconds, so reuse one connection (SSH <code>ControlMaster</code>) for scripts.</p>
+<p><strong>DNS:</strong> in Cloudflare, an <code>A</code> record for <code>*</code> (or <code>*.selah</code>) pointing at the server, set to <em>DNS only</em> (grey cloud), and an API token from the <em>Edit zone DNS</em> template limited to the domain.</p>
+<p><strong>The code and the rest</strong>, from the home server's app folder:</p>
+<pre><code>bash scripts/cloud-push.sh &lt;ssh host&gt; --setup</code></pre>
+<p>That copies the code to <code>~/selah</code> on the server and runs <code>scripts/cloud-setup.sh</code>: Docker (containers can't reach each other; logs capped), port 443 for the gateway, HTTPS through the firewall, Node.js, rclone, Caddy built with the Cloudflare module, and the build. Then on the server, in <code>~/selah</code>:</p>
+<pre><code>npm run admin -- init --domain example.com --tls acme --runner docker --allow-ip &lt;your home address&gt;
+npm run admin -- dns-token
+npm run admin -- set-password
+npm run admin -- install
+npm run admin -- prepare-release</code></pre>
+<p><code>dns-token</code> asks for the Cloudflare token, checks it with Cloudflare and keeps it only in the gateway's settings file (readable by this user alone). The certificate arrives within a minute of <code>install</code>; <code>npm run admin -- cert</code> shows it. The console answers only from the addresses you allow (with none listed, only from the server itself), so add your phone's or a new home address with <code>npm run admin -- allow-ip add &lt;address&gt;</code>.</p>
+<p><strong>Updating the cloud server:</strong> from the home server, <code>bash scripts/cloud-push.sh &lt;ssh host&gt;</code> sends the new code, builds it and restarts the console; then <strong>Prepare release</strong> and <strong>Update all</strong> in the console (or <code>npm run admin -- prepare-release</code> and <code>npm run admin -- update</code> on the server).</p>
+<h2>Moving your own Selah to the cloud</h2>
+<ol>
+<li><p>On the home server: <code>npm run cloud-export -- ~/selah-move/trial</code>. It copies the database (safely, while Selah runs), attachments, the secrets key, shared captures and the Windows app downloads, with a checksum for every file. Nothing at home changes.</p></li>
+<li><p>Send it: <code>rsync -a ~/selah-move/trial &lt;ssh host&gt;:imports/</code>.</p></li>
+<li><p>On the cloud server: <code>npm run admin -- import &lt;name&gt; --from ~/imports/trial</code>. Every file is checked against the export before anything is made, and the counts (notes, notebooks, attachments, tags, tasks, events…) are compared once it runs. Sign in at <code>https://&lt;name&gt;.&lt;domain&gt;</code> with your usual password and authenticator.</p></li>
+<li><p>When you're happy with it, move for real: stop Selah at home (<code>systemctl --user stop note-app note-app-backup.timer</code>), export again with <code>--with-offsite</code> (which brings the OneDrive backup connection, so the cloud copy carries on backing up to the same folder), send it, and import with <code>--replace</code>. The trial's data goes to the trash for 7 days.</p></li>
+<li><p>Point things at the new address: Selah for Windows (tray → <strong>Server address…</strong>), the Edge clipper (download it again from Settings on the new address), and bookmarks or the installed app on your phone. Keep the home server's data until you're sure; <code>systemctl --user start note-app</code> brings it back.</p></li>
+</ol>
+<h2>The admin command</h2>
+<table><tbody>
+<tr><th><p>Command</p></th><th><p>What it does</p></th></tr>
+<tr><td><p><code>npm run admin -- status</code></p></td><td><p>The console, the gateway, the certificate and every tenant.</p></td></tr>
+<tr><td><p><code>npm run admin -- create &lt;name&gt;</code></p></td><td><p>A new tenant, with its setup link (the console's New tenant does the same).</p></td></tr>
+<tr><td><p><code>npm run admin -- setup-link &lt;name&gt; [--reset]</code></p></td><td><p>A new one-time setup or reset link.</p></td></tr>
+<tr><td><p><code>npm run admin -- allow-ip add &lt;address&gt;</code></p></td><td><p>Lets the console answer from that address. Use it if a changed address locks you out.</p></td></tr>
+<tr><td><p><code>npm run admin -- reset-two-step</code></p></td><td><p>For the admin's own lost phone and recovery codes.</p></td></tr>
+<tr><td><p><code>npm run admin -- cert</code></p></td><td><p>Issues the wildcard certificate again (the console warns three weeks before it expires). With Let's Encrypt, shows the certificate; the gateway renews it itself.</p></td></tr>
+<tr><td><p><code>npm run admin -- dns-token</code></p></td><td><p>Saves a new Cloudflare API token for the gateway (asks for it, checks it, restarts the gateway). Use it when you roll the token.</p></td></tr>
+<tr><td><p><code>npm run admin -- import &lt;name&gt; --from &lt;folder&gt; [--replace]</code></p></td><td><p>A home server's Selah (from <code>npm run cloud-export</code>) as a tenant, checked file by file and by counts.</p></td></tr>
+<tr><td><p><code>npm run admin -- restore-file &lt;name&gt; &lt;file&gt;</code></p></td><td><p>Restores a tenant from a backup file they downloaded (asks for its passphrase); their data is moved aside first.</p></td></tr>
+<tr><td><p><code>npm run admin -- prepare-release</code>, <code>update [&lt;name&gt;…]</code></p></td><td><p>The console's Prepare release and Update all, from the command line.</p></td></tr>
+<tr><td><p><code>npm run admin -- suspend | resume | delete &lt;name&gt;</code></p></td><td><p>Pause a tenant, start it again, or delete it (its folder stays in the trash for 7 days).</p></td></tr>
+<tr><td><p><code>npm run admin -- maintenance-stop</code></p></td><td><p>Stop Selah everywhere for server maintenance: the console, every tenant (each finishing what it's doing) and the gateway. A reboot, or <code>maintenance-start</code>, brings it all back. Every step: console → Docs → <strong>Maintenance Procedure</strong>.</p></td></tr>
+</tbody></table>
+<h2>Backups and restores</h2>
+<ul>
+<li><p><strong>The host backup</strong> (console → Backups) copies every tenant every night (02:30 UTC unless you change it), encrypted, to up to four places at once: OneDrive, S3-compatible storage, WebDAV or any rclone remote, each with its own passphrase (<strong>Add a destination…</strong>). It keeps 30 days of snapshots and checks each tenant's backup weekly. Keep the passphrases off this server.</p></li>
+<li><p>Tenants can add their own encrypted off-site backup too (Settings → Data &amp; backup), to OneDrive, an S3-compatible bucket or a WebDAV server; each runs at its own time between 03:15 and 06:15 UTC. They can also download a backup file whenever they like (<code>.selahbak</code>, encrypted with a passphrase they choose, or a plain <code>.tar.gz</code>).</p></li>
+<li><p><strong>Restore…</strong> on a tenant: a <em>test restore</em> proves a snapshot can be restored without changing anything; <em>restore over their Selah</em> moves their current data aside (kept in their folder) and puts the snapshot in its place. Everyone signs in again afterwards.</p></li>
+<li><p><strong>Restore… → Notes &amp; Notebooks</strong>: bring back single notes or whole notebooks into a tenant's running Selah, as copies, from a host-backup snapshot. You see notebook names and note titles only.</p></li>
+<li><p><strong>Restore… → From a Backup File</strong>: upload a tenant's downloaded backup and enter its passphrase. It's unpacked and checked (the passphrase, the encryption tag, the database and every attachment) while their Selah keeps running; only then does it stop, move their data aside and put the backup in its place. The same from the command line, for a big file copied to the server: <code>npm run admin -- restore-file &lt;name&gt; &lt;file&gt;</code>.</p></li>
+<li><p>On a new server, set up the host backup with the same passphrase: tenants in the backup but not on the server are listed under <strong>In the backup, not on this server</strong>, each with <strong>Bring back</strong>.</p></li>
+</ul>
+<h2>Updates</h2>
+<ul>
+<li><p>Tenants run from a <em>release</em>, a copy of the code at one version. After <code>selah update</code> brings in a new version, open console → Updates and <strong>Prepare release</strong>, then <strong>Update all</strong>.</p></li>
+<li><p>Tenants move one at a time: each is backed up, restarted on the new release and checked. If one doesn't come up it goes back to its old release, with its database as it was, and the update stops there. <strong>Roll back</strong> puts any tenant back on the release it had before.</p></li>
+</ul>
+<h2>Where the hosting files are</h2>
+<table><tbody>
+<tr><th><p>What</p></th><th><p>Where</p></th></tr>
+<tr><td><p>Everything for hosting</p></td><td><p><code>{{CLOUD}}</code></p></td></tr>
+<tr><td><p>Each tenant's notes, attachments and keys</p></td><td><p><code>{{CLOUD}}/tenants/&lt;name&gt;</code></p></td></tr>
+<tr><td><p>Releases, gateway config, certificate, trash</p></td><td><p><code>{{CLOUD}}/releases</code>, <code>caddy</code>, <code>certs</code>, <code>trash</code></p></td></tr>
+<tr><td><p>Logs</p></td><td><p><code>journalctl --user -u selah-admin</code>, <code>-u selah-gateway</code>, <code>-u selah-tenant-&lt;name&gt;</code> (on a cloud server <code>docker logs selah-tenant-&lt;name&gt;</code>), or Server log on the tenant's page</p></td></tr>
+<tr><td><p>The Cloudflare token (cloud server)</p></td><td><p><code>{{CLOUD}}/caddy/gateway.env</code></p></td></tr>
+</tbody></table>
+
+<h1>Where things are</h1>
+<table><tbody>
+<tr><th><p>What</p></th><th><p>Where</p></th></tr>
+<tr><td><p>The app (code)</p></td><td><p><code>{{APP}}</code></p></td></tr>
+<tr><td><p>Notes database and attachments (notes disk)</p></td><td><p><code>{{NOTES}}</code></p></td></tr>
+<tr><td><p>Certificates, local backups, off-site settings</p></td><td><p><code>{{DATA}}</code></p></td></tr>
+<tr><td><p>The service</p></td><td><p><code>note-app</code> (systemd user service), port {{PORT}}; nightly backup: <code>note-app-backup.timer</code></p></td></tr>
+<tr><td><p>The certificate's names</p></td><td><p><code>{{DATA}}/certs/hosts.txt</code>; add a name, run <code>npm run gen-certs</code>, then <code>selah restart</code></p></td></tr>
+<tr><td><p>Rebuild runbook</p></td><td><p><code>{{APP}}/DISASTER-RECOVERY.md</code></p></td></tr>
+</tbody></table>

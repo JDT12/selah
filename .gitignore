@@ -1,0 +1,7 @@
+node_modules/
+client/dist/
+data/
+notes-data/
+*.log
+wordpress-plugin/
+smoke-results/

@@ -1,0 +1,7 @@
+# A release folder holds only what Selah runs from; these never belong in the image.
+.git
+data
+notes-data
+desktop
+wordpress-plugin
+*.log

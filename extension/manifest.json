@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Selah Clipper",
+  "version": "0.0.0",
+  "description": "Save pages, selections, links, images and screenshots to Selah.",
+  "permissions": ["activeTab", "scripting", "contextMenus", "storage"],
+  "host_permissions": [],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Clip to Selah",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  },
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "commands": {
+    "clip": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Clip this page (or the selected text) to Selah"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+[Unit]
+Description=Note App backup (database + attachments)
+
+[Service]
+Type=oneshot
+WorkingDirectory=__APP_DIR__
+ExecStart=__NODE__ scripts/backup.js

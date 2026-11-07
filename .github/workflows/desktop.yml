@@ -1,0 +1,36 @@
+# Selah Desktop (12.0, Electron, desktop-app/): builds the Windows installer when a release tag (vX.Y.Z or
+# vX.Y.Z-beta.N) is pushed and uploads it, with latest.yml for the updater, to a DRAFT GitHub release for that tag.
+# Publish the draft after trying the installer: only then does electron-updater offer it to installed apps (betas only
+# to beta installs). Uses the workflow's own GITHUB_TOKEN; no other secrets until the installer is signed.
+name: Selah Desktop
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.22.0
+
+      - name: Build the page
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+
+      - name: Build and upload the installer
+        working-directory: desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npm ci --no-audit --no-fund
+          node scripts/dist.mjs --publish always

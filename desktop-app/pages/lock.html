@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Selah is locked</title>
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+<main class="card">
+  <div class="brand"><img src="../build/icon.png" alt=""><h1>Selah is locked</h1></div>
+  <p>Enter your Selah PIN to open your library.</p>
+  <form id="form">
+    <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="12" aria-label="PIN" autofocus>
+    <div class="row">
+      <button class="btn" type="button" id="hello" hidden>Use Windows Hello</button>
+      <button class="btn primary" type="submit">Unlock</button>
+    </div>
+  </form>
+  <p class="error" id="error" role="alert"></p>
+</main>
+<script src="lock.js"></script>
+</body>
+</html>

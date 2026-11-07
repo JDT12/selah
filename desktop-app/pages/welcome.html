@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome to Selah</title>
+<link rel="stylesheet" href="page.css">
+</head>
+<body>
+<main class="card">
+  <div class="brand"><img src="../build/icon.png" alt=""><h1>Welcome to Selah</h1></div>
+  <p>Notes, Bible study, teaching and preaching. Where should your library live?</p>
+  <div class="choices" id="choices">
+    <button class="choice" id="offline" type="button">
+      <span class="ic" aria-hidden="true">💻</span>
+      <span><strong>On this PC</strong><span>Works offline, no account or sign-in. Selah backs it up automatically to a folder you choose (OneDrive, iCloud Drive or Dropbox keeps a copy off this PC).</span></span>
+    </button>
+    <button class="choice" id="connect" type="button">
+      <span class="ic" aria-hidden="true">☁️</span>
+      <span><strong>On a Selah Cloud server</strong><span>Your church’s or your own server. Use it from your phone and other computers too, and share with others there.</span></span>
+    </button>
+  </div>
+  <form id="server" hidden>
+    <label for="url">Your Selah address</label>
+    <input id="url" type="url" placeholder="https://you.example.org" autocomplete="url" required>
+    <div class="row">
+      <button class="btn" type="button" id="back">Back</button>
+      <button class="btn primary" type="submit">Connect</button>
+    </div>
+  </form>
+  <p class="error" id="error" role="alert"></p>
+</main>
+<script src="welcome.js"></script>
+</body>
+</html>

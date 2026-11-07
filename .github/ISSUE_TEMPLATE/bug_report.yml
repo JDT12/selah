@@ -1,0 +1,33 @@
+name: Something isn't working
+description: A bug in Selah Desktop or Selah Cloud
+body:
+  - type: markdown
+    attributes:
+      value: "Please leave out names, notes and anything private, in the text and in screenshots. Security problems: use Security → Report a vulnerability instead."
+  - type: dropdown
+    id: edition
+    attributes:
+      label: Which Selah
+      options: ["Selah Desktop (library on this PC)", "Selah Desktop (connected to a Cloud server)", "Selah Cloud in a browser", "Selah Cloud: the server or admin console"]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Settings → About
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what happened, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines (optional)
+      description: "Desktop: %LOCALAPPDATA%\Selah\logs. Cloud: journalctl --user -u selah-admin (see docs/troubleshooting.md)."
+      render: text
