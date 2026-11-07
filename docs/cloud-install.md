@@ -5,7 +5,8 @@ back up and update them, and an HTTPS gateway in front. It's the same setup as t
 
 ## What you need
 
-- **A Linux server**: Ubuntu 24.04 or newer, x86-64 or ARM, with a public IPv4 address. 2 GB of memory is enough for
+- **A Linux server**: Ubuntu 24.04 or newer, x86-64 or ARM, with a public IPv4 address (or on your own network
+  only: a home server or a test VM, see [On your own network](dns-https.md#3-on-your-own-network)). 2 GB of memory is enough for
   a handful of people; allow about 300 MB more per active person, and disk for their notes and attachments.
   Any VPS provider works (Hetzner, OVH, DigitalOcean, Linode…).
 - **A domain** you control, such as `example.org`. Selah uses a part of it: each Selah is `<name>.<domain>` and the
@@ -48,8 +49,8 @@ It asks:
 | Question | What to give |
 | --- | --- |
 | Domain | The part after each name, e.g. `selah.example.org` |
-| Email for Let's Encrypt | Where certificate expiry warnings go (rare; the gateway renews by itself) |
-| HTTPS certificates | **1** (any DNS provider) unless your domain is on Cloudflare and you want one wildcard certificate |
+| HTTPS certificates | **1** (any DNS provider) unless your domain is on Cloudflare and you want one wildcard certificate; **3** for a server only on your own network (a private certificate you trust on each device) |
+| Email for Let's Encrypt | Where certificate expiry warnings go (rare; the gateway renews by itself). Not asked for **3** |
 | Your address | The public address you'll open the admin console from. It suggests the one you're connected from; blank means only through an SSH tunnel |
 | Admin password | 12 characters or more; you add two-step sign-in when you first sign in |
 | First Selah | A short name (`jason`), or blank to make them later in the console |

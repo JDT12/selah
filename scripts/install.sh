@@ -4,8 +4,8 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/JDT12/selah/main/scripts/install.sh -o install.sh && bash install.sh
 #
-# It asks for your domain, an email for Let's Encrypt, how HTTPS should be proven and where you'll open the admin
-# console from; checks the DNS; then sets the server up the same way the original Selah Cloud server is set up:
+# It asks for your domain, how HTTPS should be proven (Let's Encrypt, or a private certificate for a server on your
+# own network), an email for Let's Encrypt and where you'll open the admin console from; checks the DNS; then sets the server up the same way the original Selah Cloud server is set up:
 #   - Docker for the Selahs (one container each), Node.js, Caddy (the HTTPS gateway), the firewall's port 443
 #   - the admin console and gateway as services that start at boot
 #   - the first release, built into the image every Selah runs from
@@ -34,23 +34,41 @@ sudo -v || fail "This user needs sudo."
 
 step "Selah Cloud"
 say "Each Selah lives at <name>.<your domain> (e.g. jason.selah.example.org), and the admin console at"
-say "admin.<your domain>. Point a wildcard DNS record (*.<domain>, type A) at this server first."
+say "admin.<your domain>. Point a wildcard DNS record (*.<domain>, type A) at this server first (on your own"
+say "network: see the third certificate choice below)."
 ask "Domain" "${SELAH_DOMAIN:-}"; DOMAIN="$(tr 'A-Z' 'a-z' <<<"$REPLY")"
 [[ "$DOMAIN" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$ ]] || fail "That isn't a domain name."
-ask "Email for Let's Encrypt (expiry warnings only)" "${SELAH_EMAIL:-}"; EMAIL="$REPLY"
-[[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || fail "That isn't an email address."
 say ""
 say "HTTPS certificates:"
 say "  1  Any DNS provider (recommended): a certificate for each name, checked on port 443. Needs only the"
-say "     wildcard record above."
+say "     wildcard record above, and the server reachable from the internet."
 say "  2  Cloudflare: one wildcard certificate, checked through Cloudflare's DNS. Needs a Cloudflare API token."
-ask "Choose 1 or 2" "1"
-case "$REPLY" in 1) TLS=acme-host; DNS_MODULE=none ;; 2) TLS=acme; DNS_MODULE=cloudflare ;; *) fail "Choose 1 or 2." ;; esac
+say "  3  Your own network only (a home server or a test VM, no internet access to it): a private certificate"
+say "     authority made here, which you trust once on each device. Any domain works, e.g. selah.lan."
+ask "Choose 1, 2 or 3" "1"
+LAN=0
+case "$REPLY" in 1) TLS=acme-host; DNS_MODULE=none ;; 2) TLS=acme; DNS_MODULE=cloudflare ;; 3) TLS=files; DNS_MODULE=none; LAN=1 ;; *) fail "Choose 1, 2 or 3." ;; esac
+EMAIL=""
+if ((!LAN)); then
+  ask "Email for Let's Encrypt (expiry warnings only)" "${SELAH_EMAIL:-}"; EMAIL="$REPLY"
+  [[ "$EMAIL" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || fail "That isn't an email address."
+fi
 MYIP="$(awk '{print $1}' <<<"${SSH_CLIENT:-}")"
 say ""
 say "The admin console only answers from addresses you list (anyone else gets a refusal page)."
-ask "Your address to open it from (this SSH session's, or blank for an SSH tunnel only)" "$MYIP"; ALLOW="$REPLY"
+if ((LAN)); then
+  ask "Your address to open it from (this SSH session's, or blank for any address on your network)" "$MYIP"; ALLOW="$REPLY"
+else
+  ask "Your address to open it from (this SSH session's, or blank for an SSH tunnel only)" "$MYIP"; ALLOW="$REPLY"
+fi
 
+if ((LAN)); then
+  LANIP="$(hostname -I | awk '{print $1}')"
+  step "Names on your network"
+  say "admin.$DOMAIN and each Selah's name must point at this server ($LANIP) on the devices you use: a wildcard"
+  say "record for *.$DOMAIN in your router or Pi-hole, or one line per name in each device's hosts file. The"
+  say "installer prints the lines at the end."
+else
 step "DNS"
 PUBLIC="$(curl -fsS4 --max-time 10 https://api.ipify.org || true)"
 check_name() {
@@ -66,6 +84,7 @@ check_name "selah-check-$RANDOM.$DOMAIN" || dns_ok=0
 if ((!dns_ok)); then
   say "Certificates can't be issued until *.$DOMAIN points at this server${PUBLIC:+ ($PUBLIC)}."
   ask "Carry on anyway? (y/N)" "n"; [[ "$REPLY" =~ ^[Yy] ]] || exit 1
+fi
 fi
 
 step "Getting Selah"
@@ -89,7 +108,14 @@ sudo systemctl restart "user@$(id -u).service" || true
 sleep 2
 
 step "Admin console"
-ARGS=(--domain "$DOMAIN" --tls "$TLS" --runner docker --email "$EMAIL")
+ARGS=(--domain "$DOMAIN" --tls "$TLS" --runner docker)
+[[ -n "$EMAIL" ]] && ARGS+=(--email "$EMAIL")
+if ((LAN)); then
+  # The private certificate authority (made once, in data/certs; kept on later runs) signs a wildcard certificate for
+  # *.<domain>, so every Selah's name is covered from the start. Port 443 like the other choices.
+  CERT_HOSTS="admin.$DOMAIN $LANIP" bash scripts/gen-certs.sh >/dev/null
+  ARGS+=(--port 443 --new-cert)
+fi
 [[ -n "$ALLOW" ]] && ARGS+=(--allow-ip "$ALLOW")
 [[ -n "${SELAH_ACME_STAGING:-}" ]] && ARGS+=(--acme-staging)
 npm run --silent admin -- init "${ARGS[@]}"
@@ -109,13 +135,26 @@ sg docker -c "npm run --silent admin -- prepare-release --main"
 
 step "Done"
 ADMIN_URL="https://admin.$DOMAIN"
+if ((LAN)); then
+  say "On each device you'll use, once:"
+  say "  1. Trust the certificate authority: copy $APP/data/certs/ca.crt over (e.g. scp) and install it as a trusted"
+  say "     root (Windows: double-click → Install Certificate → Local Machine → Trusted Root Certification"
+  say "     Authorities; Mac: Keychain Access → System, set to Always Trust; phones: Settings → certificate install)."
+  say "  2. Unless your router or Pi-hole has *.$DOMAIN → $LANIP, add to the hosts file (Windows:"
+  say "     C:\Windows\System32\drivers\etc\hosts, Mac/Linux: /etc/hosts), and a line like it for each new Selah:"
+  say "       $LANIP  admin.$DOMAIN"
+fi
 say "Admin console: $ADMIN_URL${ALLOW:+ (from $ALLOW)}"
-[[ -z "$ALLOW" ]] && say "  Open it through an SSH tunnel, or add your address: npm run admin -- allow-ip add <ip>"
+if [[ -z "$ALLOW" ]]; then
+  if ((LAN)); then say "  (from any address on your network)"
+  else say "  Open it through an SSH tunnel, or add your address: npm run admin -- allow-ip add <ip>"; fi
+fi
 say "  Sign in with the password you chose, then turn on two-step sign-in (it's required)."
 ask "Make the first Selah now? Its name (e.g. jason), or blank to do it later in the console" ""
 if [[ -n "$REPLY" ]]; then
   sg docker -c "npm run --silent admin -- create $(printf '%q' "$REPLY")"
-  say "Open the setup link to choose that Selah's password. Certificates for a new name take a minute."
+  if ((LAN)); then say "Open the setup link to choose that Selah's password (hosts file: $LANIP  $REPLY.$DOMAIN)."
+  else say "Open the setup link to choose that Selah's password. Certificates for a new name take a minute."; fi
 fi
 say ""
 say "Updates: bash $APP/scripts/update.sh (or Updates in the console). Docs: $APP/docs/"
