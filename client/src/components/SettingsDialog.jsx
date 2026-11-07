@@ -23,6 +23,7 @@ import { useStoredState } from '../useStoredState.js';
 import SidebarDialog from './SidebarDialog.jsx';
 import CreditsPane from './CreditsPane.jsx';
 import { DESKTOP_DOWNLOAD_URL, SOURCE_URL } from '../../../shared/credits.js';
+import { desktopSystem, downloadDesktop } from '../desktopDownload.js';
 import { ClipperRow } from './ClipperSettings.jsx';
 import FocusPagesDialog from './FocusPagesDialog.jsx';
 import { setFocus, useFocusMode } from '../focus.js';
@@ -404,14 +405,12 @@ function WindowsAppRow() {
       </div>
     );
   }
-  // Phones and tablets have no Desktop app (iPads report a Mac, but have touch).
-  const ua = navigator.userAgent;
-  const system = /Windows/i.test(ua) ? 'Windows' : /Macintosh/i.test(ua) && navigator.maxTouchPoints < 2 ? 'Mac' : /Linux/i.test(ua) && !/Android/i.test(ua) ? 'Linux' : null;
+  const system = desktopSystem();
   if (!system) return null;
   return (
     <div className="about-row">
-      <span className="muted">Selah Desktop for {system}: its own window, a {system === 'Mac' ? 'menu-bar' : 'tray'} icon, quick capture, notifications, and slides full screen on a second monitor. Choose “On a Selah Cloud server” when it opens to use this Selah in it.</span>
-      <a className="btn btn-small" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download</a>
+      <span className="muted">Selah Desktop for {system}: its own window, a {system === 'Mac' ? 'menu-bar' : 'tray'} icon, quick capture, notifications, and slides full screen on a second monitor. Choose “On a Selah Cloud server” when it opens to use this Selah in it. <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{system === 'Windows' ? 'All downloads' : system === 'Mac' ? 'Intel Mac or other downloads' : '.deb or other downloads'}</a></span>
+      <button className="btn btn-small" onClick={() => downloadDesktop(system)}>Download</button>
     </div>
   );
 }

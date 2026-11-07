@@ -4,16 +4,19 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [12.1.0] - 2026-11-07
+
 Selah 12.1 (roadmap Phase 6): Selah Desktop for Mac and Linux. Built on branch v121.
 
 ### Added
 - **Selah Desktop for Mac** (Apple Silicon and Intel, macOS 12+): `.dmg` per architecture plus the `.zip` electron-updater uses (`latest-mac.yml`). Hardened runtime with `build/entitlements.mac.plist` (JIT, unsigned executable memory, library validation off: the window, the server run as Node, WebAssembly OCR, ffmpeg); signed and notarized when CI has the Apple secrets (`MAC_CERT_P12_BASE64`, `MAC_CERT_PASSWORD`, and an App Store Connect API key `APPLE_API_KEY_P8`/`_ID`/`_ISSUER` or `APPLE_ID`/`APPLE_APP_SPECIFIC_PASSWORD`/`APPLE_TEAM_ID`), otherwise signed ad hoc (`SELAH_MAC_ADHOC`, Open Anyway; no auto-update). The library is in `~/Library/Application Support/Selah`; a menu-bar icon (`trayTemplate.png`), the app menu (Edit roles make Cmd+C/V/Z/A work), Dock click shows the window, Cmd+Option+N quick capture, Open at login (`wasOpenedAtLogin` starts it hidden), Touch ID for the lock (`systemPreferences.promptTouchID`), slides on the other display in simple full screen, the secrets key in the keychain. `stage.mjs` fetches ffmpeg for arm64 and x64; `after-pack.cjs` gives each build its own and copies the server's packages into `Selah.app/Contents/Resources`. Automatic backups also suggest iCloud Drive's real folder and `~/Library/CloudStorage` (OneDrive, Dropbox, Google Drive).
 - **Selah Desktop for Linux** (x64): AppImage and `.deb` (`latest-linux.yml`). The library is in `$XDG_DATA_HOME/Selah` (`~/.local/share/Selah`); the tray menu is set ahead of time (StatusNotifier trays send no clicks); Open at login writes `~/.config/autostart/selah.desktop` (the `.AppImage` file itself for an AppImage); the secrets key in the keyring, or the plain key file when there's no keyring (`basic_text`).
-- **CI** (`.github/workflows/desktop.yml`): one job makes the tag's draft release, then Windows, Mac (macos-15) and Linux (ubuntu-22.04) build and upload into it.
+- **CI** (`.github/workflows/desktop.yml`): one job makes the tag's draft release, then Windows, Mac (macos-15) and Linux (ubuntu-22.04) build and upload into it. The Mac builds are signed with a Developer ID and notarized (from 12.1.0-beta.4). `actions/checkout` and `actions/setup-node` v5 (Node 24; v4's Node 20 is deprecated).
 - Mac app icon on Apple's grid (`build/icon-mac.png`) and the menu-bar template icons, from `branding/build-icons.mjs`.
 
 ### Changed
 - Desktop's words follow the computer (`desktopWords()` in `client/src/desktop.js`, `platform` from the bridge): tray or menu bar, Start with Windows or Open at login, Windows Hello or Touch ID, "this computer". Settings → General → App offers the Desktop download in browsers on a Mac or Linux too.
+- Settings → General → App: **Download** starts the installer for this computer straight from the newest GitHub release (the Setup .exe, the Mac .dmg for its chip, the AppImage), read from GitHub's API in `client/src/desktopDownload.js`; a beta Selah offers the newest published beta. A link beside it opens the release page for the other files, and the page opens if GitHub can't be reached.
 - Docs: Desktop install covers Mac and Linux. The user guide no longer mentions Use on two PCs (removed in 12.0.1).
 
 ## [12.0.1] - 2026-11-06

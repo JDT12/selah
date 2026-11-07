@@ -15,9 +15,10 @@ Download it from the [releases page](https://github.com/JDT12/selah/releases/lat
    **Selah-<version>-mac-x64.dmg** for an Intel Mac. ( → About This Mac shows which: "Chip Apple M…" or
    "Processor … Intel".)
 2. Open it and drag **Selah** to **Applications**, then open Selah from Applications.
-3. If macOS says Selah "can't be opened" or "is damaged" (a beta that isn't signed yet), open **System Settings →
-   Privacy & Security**, scroll down and click **Open Anyway** next to Selah, then confirm. You only do this once.
-   If no Open Anyway button appears, run this in Terminal, then open Selah again:
+3. The first time, macOS asks whether to open an app downloaded from the internet: choose **Open**. Selah is signed
+   and notarized by Apple, and updates itself after that. (Builds before 12.1.0-beta.4 weren't signed: if macOS says
+   one "can't be opened" or "is damaged", use **System Settings → Privacy & Security → Open Anyway**, or run this in
+   Terminal, then open Selah again:)
 
    ```bash
    xattr -cr /Applications/Selah.app

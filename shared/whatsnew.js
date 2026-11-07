@@ -5,12 +5,13 @@
 export const WHATS_NEW = [
   {
     version: '12.1.0',
-    date: '',
+    date: '2026-11-07',
     title: 'Selah Desktop for Mac and Linux',
     items: [
       'Selah Desktop now runs on a Mac (Apple Silicon or Intel) and on Linux, as well as Windows: your library on your own computer, working offline, or your Selah Cloud in its own window.',
       'On a Mac, Selah waits in the menu bar so reminders arrive, and Touch ID can unlock it.',
       'Move a library between Windows, Mac and Linux by downloading a backup and importing it on the other computer.',
+      'Settings → General → App → Download now downloads the right installer for your computer straight away.',
     ],
   },
   {
