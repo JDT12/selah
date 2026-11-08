@@ -5,7 +5,7 @@ import { PARTS } from './lesson.js';
 import { bibleConnected, biblePassage } from './esv.js';
 import { anchorElements, findAnchor } from './slides.js';
 import { deckLook, loadBrand } from './slideLook.js';
-import { artPng } from './slideArt.js';
+import { artPng, isTexture } from './slideArt.js';
 
 /**
  * Export for iPad (12.2): a sermon, lesson or note as the blocks of a .selahlesson package (docs/selahlesson-format.md)
@@ -334,9 +334,11 @@ export async function buildPackage(noteId, { info, bibleText = true, slides = tr
   const translations = new Set();
   const copyright = new Set();
   const useDeck = slides && deck;
-  if (bibleText && (await bibleConnected())) {
-    const refs = new Set([...(meta.passage ? findReferences(meta.passage).map((f) => f.text) : []), ...refsIn(manuscript), ...refsIn(outline ?? [])]);
-    if (useDeck) for (const s of deck.slides) if (s.type === 'passage' && s.ref) refs.add(s.ref);
+  // Passage slides always carry their verses (a slide with only a reference is no use on the TV); "references only"
+  // leaves out the text of the notes' references.
+  const slideRefs = useDeck ? deck.slides.filter((s) => s.type === 'passage' && s.ref).map((s) => s.ref) : [];
+  if ((bibleText || slideRefs.length) && (await bibleConnected())) {
+    const refs = new Set([...slideRefs, ...(bibleText ? [...(meta.passage ? findReferences(meta.passage).map((f) => f.text) : []), ...refsIn(manuscript), ...refsIn(outline ?? [])] : [])]);
     let verses = 0;
     const list = [...refs];
     for (let i = 0; i < list.length; i += 4) {
@@ -352,18 +354,25 @@ export async function buildPackage(noteId, { info, bibleText = true, slides = tr
       }
     }
   }
-  const mode = Object.keys(passages).length ? 'text' : 'refs';
+  const mode = bibleText && Object.keys(passages).length ? 'text' : 'refs';
 
   // Each slide's block (the block its anchor names), and the deck's art as a picture.
   let slideBlocks = {};
   let art = null;
+  const arts = {};
   if (useDeck) {
     const root = doc(sermon ? deliveryHtml(html, { color: false }) : html);
     const cache = anchorElements(root);
     slideBlocks = Object.fromEntries(deck.slides.map((s) => [s.id, findAnchor(root, s.anchor, cache)?.closest('[data-bid]')?.getAttribute('data-bid') ?? null]).filter(([, b]) => b));
     try {
       const look = deckLook(deck, await loadBrand());
-      if (look.art) art = await artPng(look.art, look.palette.art, { width: 1920 });
+      // Every art the slides show (the deck's, and any a slide picks for itself), as pictures in the art color.
+      const ids = new Set([look.art, ...deck.slides.map((s) => (s.art && s.art !== 'none' ? s.art : null))].filter(Boolean));
+      for (const id of ids) {
+        const png = await artPng(id, look.palette.art, { width: 1920 }).catch(() => null);
+        if (png) arts[id] = { png, texture: isTexture(id) };
+      }
+      art = (look.art && arts[look.art]?.png) || null; // the deck's art, as Companion 1.0 reads it
     } catch { /* no art */ }
   }
 
@@ -371,7 +380,7 @@ export async function buildPackage(noteId, { info, bibleText = true, slides = tr
     body: {
       content: { manuscript, outline, passages },
       meta: { ...meta, bible: { mode, translations: [...translations], copyright: [...copyright] } },
-      art, slideBlocks, slides: !!useDeck,
+      art, arts, slideBlocks, slides: !!useDeck,
     },
     skipped,
   };

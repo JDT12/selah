@@ -4,6 +4,17 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '12.3.0',
+    date: '2026-11-07',
+    title: 'Better slides on the iPad',
+    items: [
+      'Numbered lists now go 1. → A. → I. → 1. → a. → i. → (1) → (a) → (i) as they nest, the same everywhere: your notes, Preach mode, Word and PDF exports and Selah Companion.',
+      'Export for iPad: passage slides always bring their verses, even when you choose references only.',
+      'Slides on the iPad now look the way you set them up in Selah: the theme’s fonts and art, background pictures and your logo.',
+      'Plan → Attendance: the Class, Service and Small group buttons open a new group of that kind.',
+    ],
+  },
+  {
     version: '12.2.0',
     date: '2026-11-07',
     title: 'Selah Companion for iPad',

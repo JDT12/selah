@@ -1,6 +1,7 @@
 import { citationStyle, formatCitations } from '../citations/index.js';
 import { ELEMENT_COLORS } from '../sermon.js';
 import { scriptureCopyrights } from '../esv.js';
+import { outlineMarker } from '../../../shared/outline.js';
 
 /**
  * A note read once into plain blocks and runs (11.0), for the manuscript exports that aren't Word: PDF and rich
@@ -23,21 +24,8 @@ export const ELEMENT = { ...Object.fromEntries(Object.entries(ELEMENT_COLORS).ma
 export const QUOTE_BAR = 'C9C2B6';
 export const CALLOUT_BAR = '93613A';
 
-// The editor's outline numbering: 1. → A. → I. → a. → i. → (1) → (a).
-const roman = (n) => [[1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']]
-  .reduce((s, [v, r]) => { let out = s; while (n >= v) { out += r; n -= v; } return out; }, '');
-const letter = (n) => { let s = ''; let x = n; while (x > 0) { x -= 1; s = String.fromCharCode(65 + (x % 26)) + s; x = Math.floor(x / 26); } return s; };
-export function marker(level, n) {
-  switch (level % 7) {
-    case 0: return `${n}.`;
-    case 1: return `${letter(n)}.`;
-    case 2: return `${roman(n)}.`;
-    case 3: return `${letter(n).toLowerCase()}.`;
-    case 4: return `${roman(n).toLowerCase()}.`;
-    case 5: return `(${n})`;
-    default: return `(${letter(n).toLowerCase()})`;
-  }
-}
+// Numbered lists use the outline numbering in shared/outline.js.
+export const marker = outlineMarker;
 const BULLETS = ['•', '–', '◦'];
 
 /** A picture as PNG bytes at most `max` px wide (drawing it on a canvas covers JPEG, WebP and SVG). */
@@ -185,14 +173,14 @@ class Reader {
       if (!kids.length && li.textContent.trim()) kids.push(li);
       for (const c of kids) {
         if (c.tagName === 'LABEL') continue;
-        if (c.tagName === 'UL' || c.tagName === 'OL') { out.push(...await this.list(c, { ...ctx, stripe, indent }, level + 1)); continue; }
+        if (c.tagName === 'UL' || c.tagName === 'OL') { out.push(...await this.list(c, { ...ctx, stripe, indent, ol: (ctx.ol ?? 0) + (numbered ? 1 : 0) }, level + 1)); continue; }
         if (c !== li && !['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(c.tagName)) {
           out.push(...await this.block(c, { ...ctx, stripe, indent: indent + level + 1 }));
           continue;
         }
         const runs = await this.runs(c, { labelColor: stripe });
         let mark = null;
-        if (first) mark = tasks ? (li.dataset.checked === 'true' ? '[x]' : '[  ]') : numbered ? marker(level, n) : BULLETS[level % BULLETS.length];
+        if (first) mark = tasks ? (li.dataset.checked === 'true' ? '[x]' : '[  ]') : numbered ? marker(ctx.ol ?? 0, n) : BULLETS[level % BULLETS.length];
         out.push({ t: 'li', runs, marker: mark, level: indent + level, stripe });
         first = false;
       }

@@ -131,8 +131,14 @@ The deck as Selah keeps it, plus how it looks, so Companion can draw it on a TV:
 }
 ```
 
-- Slide types: `title`, `point`, `passage` (with `ref`, `tr` and, in text mode, the passage under `passages` in
-  content.json), `image` (`image` is a media path, `fit` `cover` or `contain`), `question` (`answer`), `custom`.
+- Slide types: `title`, `point`, `passage` (with `ref`, `tr` and the passage under `passages` in content.json:
+  passage slides always carry their verses, even when the export is references only), `image` (`image` is a media
+  path, `fit` `cover` or `contain`), `question` (`answer`), `custom`.
+- **look.fonts**: `head`/`body` family names, `headWeight`, `headItalic`, `headUpper` (Companion bundles the theme fonts).
+- **look.artKind** and **look.arts** (12.3): the deck's art id, and each art the slides show by id
+  (`{ "mountains": { "src": "media/art-mountains.png", "texture": false } }`); `look.art` stays for older readers.
+- A slide's own **art** (an art id, or `none`), **bg** (a background picture, media path) and **logo** (`false` hides it).
+  The logo is only set when the deck uses the church's own theme, as in Selah.
 - **block**: the id of the block the slide goes with (moving through the text moves the slides), when found.
 
 ## README.md

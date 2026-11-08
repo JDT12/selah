@@ -94,7 +94,7 @@ function IpadExportDialog({ noteId, title, info, settings: initial, bible, onIds
         </label>
         <label className={`export-format ${!bibleText ? 'is-active' : ''}`}>
           <input type="radio" name="ipad-bible" checked={!bibleText} onChange={() => setBibleText(false)} />
-          <span><strong>References only</strong><span className="muted">The iPad shows each reference; you read the text from your own Bible.</span></span>
+          <span><strong>References only</strong><span className="muted">The iPad shows each reference; you read the text from your own Bible. Passage slides still get their verses.</span></span>
         </label>
       </div>
 

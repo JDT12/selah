@@ -15,6 +15,7 @@ import { useStoredState } from '../useStoredState.js';
  */
 const KIND_ICON = { class: 'school', service: 'lectern', group: 'users' };
 const KIND_LABEL = { class: 'Class', service: 'Service', group: 'Small group' };
+const NAME_EXAMPLE = { class: 'Adult Sunday School', service: 'Sunday morning service', group: 'Tuesday home group' };
 const WEEKDAY = ['Sundays', 'Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays'];
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 const dayName = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -29,12 +30,12 @@ function eventLabel(ev) {
 }
 
 /** New group, or edit one (`group`). Resolves the id, or null. */
-function GroupDialog({ group, close }) {
+function GroupDialog({ group, kind: startKind = 'class', close }) {
   const dialog = useDialog();
   const [events, setEvents] = useState([]);
   const [name, setName] = useState(group?.name ?? '');
-  const [kind, setKind] = useState(group?.kind ?? 'class');
-  const [mode, setMode] = useState(group?.mode ?? 'roster');
+  const [kind, setKind] = useState(group?.kind ?? startKind);
+  const [mode, setMode] = useState(group?.mode ?? (startKind === 'service' ? 'headcount' : 'roster'));
   const [eventId, setEventId] = useState(group?.event_id ? String(group.event_id) : '');
   const [people, setPeople] = useState('');
   const [busy, setBusy] = useState(false);
@@ -82,7 +83,7 @@ function GroupDialog({ group, close }) {
         <span className="muted atn-field-hint">Pick its repeating event on the calendar and its meetings show up here on their own.</span>
       </label>
       <label className="field">Name
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Adult Sunday School" autoFocus={!group} />
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={NAME_EXAMPLE[kind] ?? ''} autoFocus={!group} />
       </label>
       <label className="field">Take attendance by
         <div className="segmented" role="radiogroup" aria-label="Take attendance by">
@@ -363,8 +364,9 @@ export default function AttendancePage({ onMenu, onSection, onTasksChanged }) {
   const [showArchived, setShowArchived] = useState(false);
   const load = useCallback(() => api.attendance().then(setData).catch((e) => dialog.toast(e.message, 'error')), [dialog]);
   useEffect(() => { load(); return onLive(load, 800); }, [load]);
-  const create = async () => {
-    const id = await dialog.open((close) => <GroupDialog close={close} />);
+  // A new group, of the kind picked on the start screen (Class from New group).
+  const create = async (kind = 'class') => {
+    const id = await dialog.open((close) => <GroupDialog kind={kind} close={close} />);
     if (id) { await load(); setOpen(id); }
   };
   const groups = data?.groups ?? [];
@@ -397,7 +399,7 @@ export default function AttendancePage({ onMenu, onSection, onTasksChanged }) {
         <button className="icon-btn mobile-only" onClick={onMenu} aria-label="Open sidebar"><Icon name="menu" /></button>
         <div className="page-heading"><h1>Plan</h1></div>
         <div className="page-actions">
-          <button className="btn btn-primary" onClick={create}><Icon name="plus" size={16} /> New group</button>
+          <button className="btn btn-primary" onClick={() => create()}><Icon name="plus" size={16} /> New group</button>
         </div>
       </header>
       <PlanTabs tab="attendance" onSection={onSection} />
@@ -413,7 +415,7 @@ export default function AttendancePage({ onMenu, onSection, onTasksChanged }) {
           <p className="muted">The classes you teach, the services you preach and your small groups: check off a roster (easy on a phone) or count heads, with meetings from your calendar. When someone misses three weeks in a row, you'll see it here.</p>
           <div className="studies-start-grid">
             {Object.entries(KIND_LABEL).map(([k, l]) => (
-              <button key={k} type="button" className="studies-start-card" onClick={create}>
+              <button key={k} type="button" className="studies-start-card" onClick={() => create(k)}>
                 <Icon name={KIND_ICON[k]} size={22} /><strong>{l}</strong>
                 <span>{k === 'class' ? 'A class or Sunday school you teach' : k === 'service' ? 'A service you preach: a headcount' : 'A home group or Bible study'}</span>
               </button>

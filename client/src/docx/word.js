@@ -30,9 +30,9 @@ const FORMATS = {
 };
 
 const NUMBERED = 'numbered';
-// The editor's outline numbering: 1. → A. → I. → a. → i. → (1) → (a).
-const LEVEL_FORMATS = [LevelFormat.DECIMAL, LevelFormat.UPPER_LETTER, LevelFormat.UPPER_ROMAN, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN, LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER];
-const levelText = (i) => (i < 5 ? `%${i + 1}.` : `(%${i + 1})`);
+// The outline numbering (shared/outline.js): 1. → A. → I. → 1. → a. → i. → (1) → (a) → (i).
+const LEVEL_FORMATS = [LevelFormat.DECIMAL, LevelFormat.UPPER_LETTER, LevelFormat.UPPER_ROMAN, LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN, LevelFormat.DECIMAL, LevelFormat.LOWER_LETTER, LevelFormat.LOWER_ROMAN];
+const levelText = (i) => (i < 6 ? `%${i + 1}.` : `(%${i + 1})`);
 
 const plain = (html) => new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body.textContent ?? '';
 const blank = (n = 1) => Array.from({ length: n }, () => new Paragraph({ children: [] }));
@@ -229,7 +229,7 @@ class Converter {
           const runs = await this.runs(p);
           if (tasks && first) runs.unshift(new TextRun(li.dataset.checked === 'true' ? '☑ ' : '☐ '));
           const opts = first && !tasks
-            ? (numbered ? { numbering: { reference: NUMBERED, level: Math.min(level, 6), instance } } : { bullet: { level: Math.min(level, 8) } })
+            ? (numbered ? { numbering: { reference: NUMBERED, level: Math.min(level, 8), instance } } : { bullet: { level: Math.min(level, 8) } })
             : { indent: { left: 720 * (level + 1) } };
           out.push(this.para(runs, { ...opts, spacing: { line: this.format === 'turabian' ? 480 : 240, after: this.format === 'turabian' ? 0 : 60 } }, { ...ctx, list: true }));
           first = false;

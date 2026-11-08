@@ -10,6 +10,7 @@ import { writeZip } from './zip.js';
 import { exportFile } from './export.js';
 import { getBrand, getDeck } from './slides.js';
 import { deckLook } from '../shared/slideThemes.js';
+import { outlineMarker } from '../shared/outline.js';
 import { syncFolders } from './desktopbackup.js';
 
 /**
@@ -115,12 +116,13 @@ function mediaSet() {
 }
 
 /** The deck for Companion: as kept, with its look worked out and its pictures as media paths. */
-function deckOut(noteId, media, { art, slideBlocks }) {
+function deckOut(noteId, media, { art, arts = {}, slideBlocks }) {
   const { deck } = getDeck(noteId);
   if (!deck?.slides?.length) return null;
   const brand = getBrand();
   const look = deckLook(deck, brand);
-  const logo = deck.logo === false ? null : brand.logo ? { src: media.ask(brand.logo), corner: brand.logoPos ?? 'tr' } : null;
+  // As in Selah, the church logo goes on slides in the church's own theme.
+  const logo = deck.logo === false || deck.theme !== 'brand' ? null : brand.logo ? { src: media.ask(brand.logo), corner: brand.logoPos ?? 'tr' } : null;
   const blocks = slideBlocks && typeof slideBlocks === 'object' ? slideBlocks : {};
   return {
     kind: deck.kind ?? null,
@@ -129,6 +131,7 @@ function deckOut(noteId, media, { art, slideBlocks }) {
       fonts: { id: look.fonts.id, head: look.fonts.head.family, body: look.fonts.body.family, headWeight: look.fonts.head.weight, headItalic: look.fonts.head.style === 'italic', headUpper: !!look.fonts.head.upper },
       art: art ? 'media/art.png' : null,
       artKind: look.art,
+      arts: Object.fromEntries(Object.entries(arts).map(([id, a]) => [id, { src: `media/art-${id}.png`, texture: a.texture }])),
       background: deck.bg ? media.ask(deck.bg) : null,
       dim: typeof deck.dim === 'number' ? deck.dim : null,
       logo: logo?.src ? logo : null,
@@ -162,17 +165,17 @@ function runsMd(runs) {
     return `${lead}${t}${tail}`;
   }).join('');
 }
-function blocksMd(blocks, indent = '') {
+function blocksMd(blocks, indent = '', depth = 0) {
   const out = [];
   for (const b of Array.isArray(blocks) ? blocks : []) {
     if (!b) continue;
     switch (b.type) {
-      case 'section': out.push(`${'#'.repeat(Math.min(6, (b.level ?? 1) + 1))} ${mdEsc(b.title)}`, '', ...blocksMd(b.children, indent)); break;
-      case 'element': out.push(...(b.label ? [`${indent}*${mdEsc(b.label)}*`, ''] : []), ...blocksMd(b.children, indent)); break;
+      case 'section': out.push(`${'#'.repeat(Math.min(6, (b.level ?? 1) + 1))} ${mdEsc(b.title)}`, '', ...blocksMd(b.children, indent, depth)); break;
+      case 'element': out.push(...(b.label ? [`${indent}*${mdEsc(b.label)}*`, ''] : []), ...blocksMd(b.children, indent, depth)); break;
       case 'heading': out.push(`${'#'.repeat(Math.min(6, (b.level ?? 3) + 1))} ${runsMd(b.runs)}`, ''); break;
       case 'paragraph': out.push(`${indent}${runsMd(b.runs)}`, ''); break;
       case 'quote': {
-        const lines = blocksMd(b.children);
+        const lines = blocksMd(b.children, '', depth);
         while (lines.length && !lines[lines.length - 1]) lines.pop();
         out.push(...lines.map((l) => `${indent}> ${l}`.trimEnd()), '');
         break;
@@ -193,8 +196,8 @@ function blocksMd(blocks, indent = '') {
       case 'list': {
         let n = Number(b.start) || 1;
         for (const it of Array.isArray(b.items) ? b.items : []) {
-          const mark = b.ordered ? `${n++}.` : typeof it?.checked === 'boolean' ? `- [${it.checked ? 'x' : ' '}]` : '-';
-          const lines = blocksMd(it?.children, `${indent}   `).filter((l, i, all) => l !== '' || (i > 0 && all[i - 1] !== ''));
+          const mark = b.ordered ? outlineMarker(depth, n++) : typeof it?.checked === 'boolean' ? `- [${it.checked ? 'x' : ' '}]` : '-';
+          const lines = blocksMd(it?.children, `${indent}   `, depth + (b.ordered ? 1 : 0)).filter((l, i, all) => l !== '' || (i > 0 && all[i - 1] !== ''));
           const first = lines.findIndex((l) => l.trim());
           const label = it?.label ? `*${mdEsc(it.label)}* ` : '';
           if (first < 0) { out.push(`${indent}${mark} ${label}`.trimEnd()); continue; }
@@ -283,8 +286,17 @@ async function buildPackage(noteId, body) {
     outline: Array.isArray(c.outline) ? c.outline : null,
     passages: c.passages && typeof c.passages === 'object' && !Array.isArray(c.passages) ? c.passages : {},
   };
-  const art = typeof body.art === 'string' && body.art.startsWith('data:image/png;base64,') ? Buffer.from(body.art.slice(22), 'base64') : null;
-  const deck = body.slides === false ? null : deckOut(noteId, media, { art, slideBlocks: body.slideBlocks });
+  const png = (v) => (typeof v === 'string' && v.startsWith('data:image/png;base64,') ? Buffer.from(v.slice(22), 'base64') : null);
+  const art = png(body.art);
+  // Each art the slides show, by its id: media/art-<id>.png.
+  const arts = {};
+  if (body.arts && typeof body.arts === 'object') {
+    for (const [id, a] of Object.entries(body.arts).slice(0, 20)) {
+      const data = png(a?.png);
+      if (/^[a-z0-9-]{1,30}$/.test(id) && data) arts[id] = { data, texture: !!a.texture };
+    }
+  }
+  const deck = body.slides === false ? null : deckOut(noteId, media, { art, arts, slideBlocks: body.slideBlocks });
   const meta = cleanMeta(body.meta, note);
 
   const contentJson = JSON.stringify(content);
@@ -293,6 +305,7 @@ async function buildPackage(noteId, body) {
   const { uid, version } = versionFor(noteId, hash);
   const files = await media.resolve();
   if (art && deck) files.push({ name: 'media/art.png', data: art, mime: 'image/png', bytes: art.length });
+  if (deck) for (const [id, a] of Object.entries(arts)) files.push({ name: `media/art-${id}.png`, data: a.data, mime: 'image/png', bytes: a.data.length });
   const manifest = {
     format: FORMAT, id: uid, version, hash, exportedAt: new Date().toISOString(),
     selah: { version: VERSION, edition: config.edition === 'desktop' ? 'desktop' : 'cloud' },

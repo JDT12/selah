@@ -456,16 +456,19 @@ a { color: var(--accent); }
 .note-body h4 { font-size: 1.05em; }
 .note-body > :first-child { margin-top: 0; }
 .note-body ul, .note-body ol { padding-left: 1.6em; margin: 0.3em 0; }
-/* Numbered lists use outline numbering: 1. → A. → I. → a. → i. → (1) → (a), in notes and builder boxes (10.0.2) */
+/* Numbered lists use outline numbering: 1. → A. → I. → 1. → a. → i. → (1) → (a) → (i), everywhere (12.2.1) */
 @counter-style paren-decimal { system: extends decimal; prefix: '('; suffix: ') '; }
 @counter-style paren-lower-alpha { system: extends lower-alpha; prefix: '('; suffix: ') '; }
+@counter-style paren-lower-roman { system: extends lower-roman; prefix: '('; suffix: ') '; }
 .note-body ol, .rb-body ol, .sb-rich-body ol { list-style-type: decimal; padding-left: 2.4em; }
 .note-body ol ol, .rb-body ol ol, .sb-rich-body ol ol { list-style-type: upper-alpha; padding-left: 1.9em; }
 .note-body ol ol ol, .rb-body ol ol ol, .sb-rich-body ol ol ol { list-style-type: upper-roman; padding-left: 2.4em; }
-.note-body ol ol ol ol, .rb-body ol ol ol ol, .sb-rich-body ol ol ol ol { list-style-type: lower-alpha; }
-.note-body ol ol ol ol ol, .rb-body ol ol ol ol ol, .sb-rich-body ol ol ol ol ol { list-style-type: lower-roman; padding-left: 2.1em; }
-.note-body ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol { list-style-type: paren-decimal; padding-left: 2.1em; }
-.note-body ol ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol ol { list-style-type: paren-lower-alpha; }
+.note-body ol ol ol ol, .rb-body ol ol ol ol, .sb-rich-body ol ol ol ol { list-style-type: decimal; padding-left: 1.9em; }
+.note-body ol ol ol ol ol, .rb-body ol ol ol ol ol, .sb-rich-body ol ol ol ol ol { list-style-type: lower-alpha; padding-left: 1.9em; }
+.note-body ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol { list-style-type: lower-roman; padding-left: 2.1em; }
+.note-body ol ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol ol { list-style-type: paren-decimal; padding-left: 2.4em; }
+.note-body ol ol ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol ol ol { list-style-type: paren-lower-alpha; padding-left: 2.4em; }
+.note-body ol ol ol ol ol ol ol ol ol, .rb-body ol ol ol ol ol ol ol ol ol, .sb-rich-body ol ol ol ol ol ol ol ol ol { list-style-type: paren-lower-roman; padding-left: 2.4em; }
 
 /* Collapsible H1/H2 headings */
 .note-body .heading-fold {
@@ -3860,13 +3863,16 @@ body.focus-writing .sidebar, body.focus-writing .note-list, body.focus-writing .
 .pm-content ol, .pm-content ul { margin: 0 0 0.6em; padding-left: 1.4em; }
 .pm-content li { margin: 0.25em 0; }
 .pm-content li > p { margin: 0; }
-/* Outline numbering, as in the note: 1. → A. → I. → a. → i. → (1) */
+/* Outline numbering, as in the note: 1. → A. → I. → 1. → a. → i. → (1) → (a) → (i) */
 .pm-content ol { list-style-type: decimal; }
 .pm-content ol ol { list-style-type: upper-alpha; }
 .pm-content ol ol ol { list-style-type: upper-roman; }
-.pm-content ol ol ol ol { list-style-type: lower-alpha; }
-.pm-content ol ol ol ol ol { list-style-type: lower-roman; }
-.pm-content ol ol ol ol ol ol { list-style-type: paren-decimal; }
+.pm-content ol ol ol ol { list-style-type: decimal; }
+.pm-content ol ol ol ol ol { list-style-type: lower-alpha; }
+.pm-content ol ol ol ol ol ol { list-style-type: lower-roman; }
+.pm-content ol ol ol ol ol ol ol { list-style-type: paren-decimal; }
+.pm-content ol ol ol ol ol ol ol ol { list-style-type: paren-lower-alpha; }
+.pm-content ol ol ol ol ol ol ol ol ol { list-style-type: paren-lower-roman; }
 .pm-content strong { color: var(--pm-accent); }
 .pm-content sup { font-size: 0.6em; color: var(--pm-muted); }
 .pm-content blockquote { margin: 0 0 0.6em; padding-left: 0.8em; border-left: 3px solid var(--pm-line); }
@@ -3890,12 +3896,11 @@ body.focus-writing .sidebar, body.focus-writing .note-list, body.focus-writing .
 .pm-content [data-element] { border-left: 4px solid var(--el); padding: 0.15em 0 0.05em 0.75em; margin: 0 0 0.7em; background: color-mix(in srgb, var(--el) 6%, transparent); border-radius: 0 6px 6px 0; }
 .pm-content [data-element] > :last-child { margin-bottom: 0.3em; }
 .pm-content p[data-element-label] { margin: 0.2em 0 0.25em; font-family: var(--font); font-size: 0.58em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--el); }
-/* Outline view of a numbered division: 1. → A. → i., markers in the element's color when color-coded. */
+/* Outline view of a numbered division (numbered as everywhere else), markers in the element's color when color-coded. */
 .pm-content [data-delivery-list] > ol { padding-left: 1.6em; }
 .pm-content [data-delivery-list] > ol > li { margin: 0.45em 0; }
 .pm-content [data-delivery-list] > ol > li::marker { font-weight: 700; color: var(--pm-accent); }
-.pm-content [data-delivery-list] ol ol { list-style: upper-alpha; margin: 0.15em 0 0.3em; }
-.pm-content [data-delivery-list] ol ol ol { list-style: lower-roman; }
+.pm-content [data-delivery-list] ol ol { margin: 0.15em 0 0.3em; }
 .pm-content [data-delivery-list] li[data-element] { border: 0; padding: 0; margin: 0.45em 0; background: none; border-radius: 0; }
 .pm-content [data-delivery-list] li[data-element]::marker { color: var(--el); }
 .pm-content span[data-element-label] { font-family: var(--font); font-size: 0.58em; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--el); vertical-align: 0.15em; margin-right: 0.3em; }

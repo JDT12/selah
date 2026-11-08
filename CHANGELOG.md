@@ -4,6 +4,17 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [12.3.0] - 2026-11-07
+
+Selah 12.3: Companion fixes on the Selah side, one outline numbering, and an attendance fix.
+
+### Changed
+- **Outline numbering everywhere**: numbered lists go 1. → A. → I. → 1. → a. → i. → (1) → (a) → (i) by depth, in notes, builder boxes, Preach mode (the outline view of a numbered division too, which had its own 1. → A. → i.), Word and PDF exports, the iPad export's README and Selah Companion. One helper, `shared/outline.js` (`outlineMarker`); the CSS adds `paren-lower-roman`; the Word numbering has nine levels; the PDF model counts only numbered lists for the depth.
+- **Export for iPad**: passage slides always carry their verses, also when the export is references only (that choice now covers the notes' references; `bible.mode` stays `refs`, with the translation and copyright lines for the slides). Every art the slides show (the deck's and any a slide picks) goes in the package as `media/art-<id>.png`, listed in `deck.look.arts` with whether it's a texture (`look.art` stays for Companion 1.0 build 1). The church logo goes in only for a deck in the church's own theme, as Selah shows it. `docs/selahlesson-format.md` updated.
+
+### Fixed
+- **Attendance**: with no groups yet, the Class, Service and Small group buttons opened the new-group dialog on Class; each now opens it on its own kind (Service as a headcount).
+
 ## [12.2.0] - 2026-11-07
 
 Selah 12.2 (roadmap Phase 7a): Export for iPad, the Desktop and Cloud side of Selah Companion.
