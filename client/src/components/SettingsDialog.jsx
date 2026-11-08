@@ -6,7 +6,7 @@ import { useDialog } from './Dialogs.jsx';
 import AccountPane from './AccountPane.jsx';
 import { WhatsNewDialog } from './WhatsNew.jsx';
 import { isDesktopEdition, isHosted, isOwnServer } from '../mode.js';
-import { DesktopAppRow, DesktopBackups } from './DesktopSettings.jsx';
+import { DesktopAppRow, DesktopBackups, IpadExportFolder } from './DesktopSettings.jsx';
 import { OffsiteBackupRow } from './OffsiteBackup.jsx';
 import { BackupDownloadRow } from './BackupDownload.jsx';
 import ImportDialog from './ImportDialog.jsx';
@@ -182,7 +182,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
     ),
     data: (
       <>
-        {isDesktopEdition() ? <DesktopBackups /> : isOwnServer() ? (
+        {isDesktopEdition() ? <><DesktopBackups /><IpadExportFolder /></> : isOwnServer() ? (
           <>
             <h3>Off-site backup</h3>
             <OffsiteBackupRow />

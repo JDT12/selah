@@ -494,7 +494,7 @@ async function md5File(file) {
 }
 
 /** The file to export for an attachment: HEIC photos as their JPEG copy (what you see in Selah). */
-async function exportFile(a) {
+export async function exportFile(a) {
   if (isHeic(a.mime, a.filename)) {
     const jpg = await heicJpeg(a).catch(() => null);
     if (jpg) return { file: jpg, filename: a.filename.replace(/\.(heic|heif)$/i, '') + '.jpg', mime: 'image/jpeg' };

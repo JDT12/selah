@@ -9,6 +9,7 @@ import { SlideStrip } from './SlideShow.jsx';
 import { PARTS, firstSentence, parseLesson, section as lessonSection } from '../lesson.js';
 import { ReflectionDialog } from './CourseDialogs.jsx';
 import { exportManuscript } from './ManuscriptExport.jsx';
+import { exportForIpad } from './IpadExport.jsx';
 
 /**
  * Preaching mode: a note read-only, in large type, for the pulpit. Headings fold (tap one), Bible references show
@@ -389,6 +390,8 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
           <button type="button" className="pm-icon" onClick={() => setSize((z) => Math.min(2.4, Math.round((z + 0.1) * 10) / 10))} aria-label="Larger text">A+</button>
           <button type="button" className="pm-icon" onClick={() => exportManuscript(dialog, note.id, { note, view: { outline: outlineView, colors } })}
             aria-label="Export the manuscript" title="Export the manuscript (PDF, Word, rich text)"><Icon name="download" size={16} /></button>
+          <button type="button" className="pm-icon" onClick={() => exportForIpad(dialog, note.id, { title: note.title })}
+            aria-label="Export for iPad" title="Export for iPad (Selah Companion)"><Icon name="tablet" size={16} /></button>
           <button type="button" className="pm-icon" onClick={() => setDark(!dark)} aria-label={dark ? 'Light page' : 'Dark page'} title={dark ? 'Light page' : 'Dark page'}><Icon name={dark ? 'sun' : 'eye'} size={16} /></button>
           {teach ? (teach.item && (
             <button type="button" className={`pm-icon ${taught ? 'is-on' : ''}`} onClick={() => markTaught(false)} disabled={taught}

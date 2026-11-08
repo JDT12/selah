@@ -305,6 +305,28 @@ const DeliveryOrder = Extension.create({
 });
 
 /**
+ * A block's own id (data-bid), given when the note is exported for the iPad (server/lessonexport.js) and kept through
+ * editing, so notes written beside a paragraph in Selah Companion stay with it after the next export. A block split
+ * with Enter doesn't copy it (the new half gets its own at the next export).
+ */
+const BlockId = Extension.create({
+  name: 'blockId',
+  addGlobalAttributes() {
+    return [{
+      types: ['paragraph', 'heading', 'listItem', 'taskItem', 'blockquote', 'callout', 'image', 'table', 'codeBlock'],
+      attributes: {
+        bid: {
+          default: null,
+          keepOnSplit: false,
+          parseHTML: (el) => el.getAttribute('data-bid'),
+          renderHTML: (attrs) => (attrs.bid ? { 'data-bid': attrs.bid } : {}),
+        },
+      },
+    }];
+  },
+});
+
+/**
  * Dragging a heading by its grip carries its section with it: an H1 brings everything up to the next H1, an H2 up to
  * the next H2 or H1, and so on. The drag handle has already picked up the heading alone by the time the dragstart
  * reaches the document, so this widens what it carries.
@@ -747,6 +769,7 @@ export function buildExtensions({ onFiles }) {
     ExitContainers,
     HeadingFold,
     DeliveryOrder,
+    BlockId,
     SectionDrag,
     ListJoin,
     Attachment,

@@ -12,6 +12,7 @@ import {
 import { preachNote } from './PreachMode.jsx';
 import { presentNote } from './PresentMode.jsx';
 import { exportManuscript } from './ManuscriptExport.jsx';
+import { exportForIpad } from './IpadExport.jsx';
 import SlidesEditor from './SlidesEditor.jsx';
 import SermonBoard from './SermonBoard.jsx';
 import FromStudies from './FromStudies.jsx';
@@ -496,6 +497,14 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
         <div className="gb-forward-btns sb-export">
           <button type="button" className="btn" disabled={busy} onClick={async () => { if (!dirty || (await save())) exportManuscript(dialog, noteId); }}><Icon name="download" size={14} /> Export the manuscript</button>
           <span className="muted">PDF, Word or rich text, as a manuscript or an outline.</span>
+        </div>
+        <div className="gb-forward-btns sb-export">
+          <button type="button" className="btn" disabled={busy} onClick={async () => {
+            if (dirty && !(await save())) return;
+            // The export gives the note's blocks ids; the builder then carries on from the note with them.
+            exportForIpad(dialog, noteId, { title: meta.title, onIds: ({ html, updated_at }) => { base.current = updated_at; setModel(parseSermon(html)); setSavedHtml(html); } });
+          }}><Icon name="tablet" size={14} /> Export for iPad</button>
+          <span className="muted">For Preach in Selah Companion on your iPad, with its slides.</span>
         </div>
       </>
     ),

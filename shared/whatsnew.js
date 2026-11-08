@@ -4,6 +4,17 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '12.2.0',
+    date: '2026-11-07',
+    title: 'Selah Companion for iPad',
+    items: [
+      'Selah Companion, the new iPad app for preaching and teaching, is now available. Preach and Teach from your iPad with a timer, your slides on a TV, margin notes and Apple Pencil ink.',
+      'Export a sermon or lesson for it with Export for iPad: the tablet button in Preach and Teach mode, or the builders’ last step. It takes the text in delivery order, its slides, and the Bible text or just the references.',
+      'Export again after a change and it’s a new version of the same lesson, so the notes you write beside it on the iPad stay put.',
+      'In Selah Desktop, exports can go straight into a folder your iPad opens, like iCloud Drive or OneDrive (Settings → Data & backup → Selah Companion).',
+    ],
+  },
+  {
     version: '12.1.0',
     date: '2026-11-07',
     title: 'Selah Desktop for Mac and Linux',

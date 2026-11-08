@@ -4,6 +4,19 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [12.2.0] - 2026-11-07
+
+Selah 12.2 (roadmap Phase 7a): Export for iPad, the Desktop and Cloud side of Selah Companion.
+
+### Added
+- **Export for iPad**: a sermon, lesson or note as a `.selahlesson` package for Selah Companion (the new iPad app, 1.0 in TestFlight), from the tablet button in Preach and Teach mode and the sermon and lesson builders' last step. The format is documented in `docs/selahlesson-format.md` (format 1): `manifest.json` (stable id per note, a version that goes up only when the content changes, metadata, delivery log, steps, Bible mode), `content.json` (blocks as Preach mode shows them: delivery order, elements marked for color coding, an outline for an ordered sermon, a lesson's steps and Look questions), `deck.json` (slides with their look worked out and the block each follows), `media/`, and a `README.md` copy. The dialog offers the verse text (up to 500 verses, with copyright lines) or references only, and the slides. Built in the window (`client/src/ipadExport.js`, `IpadExport.jsx`), zipped by `server/lessonexport.js` (`POST /api/notes/:id/ipad-export`; table `lesson_exports`).
+- **Block ids**: blocks keep an id in the note (`data-bid`, the editor's `BlockId` attribute; given by `POST /api/notes/:id/block-ids` at export, with repeated ids replaced) so notes written beside a paragraph on the iPad stay with it after the next export. Each block also carries a text fingerprint for when a builder rewrote it.
+- **Selah Desktop**: Export for iPad can save straight into a folder the iPad reaches (iCloud Drive, OneDrive, Google Drive), replacing the lesson's earlier file; set in the dialog or Settings → Data & backup → Selah Companion (`/api/ipad-export/settings`, setting `ipad_export`). Cloud downloads the file.
+
+### Changed
+
+- **Lighter beta review**: `npm run beta` opens the smoke test's screenshot gallery when it finishes (`npm run smoke -- --open`), with failed pages and console errors listed first, and ends with the review steps: screenshots, then the Desktop draft pre-release, then the demo only for what Desktop can't show. RELEASING.md has a new "Reviewing a beta" section; demo sample data grows only when a feature can't be seen without it.
+
 ## [12.1.0] - 2026-11-07
 
 Selah 12.1 (roadmap Phase 6): Selah Desktop for Mac and Linux. Built on branch v121.

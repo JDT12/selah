@@ -3130,6 +3130,13 @@ button.wp-cov-cell:hover { outline: 2px solid var(--accent); outline-offset: 1px
 .export-format.is-active { border-color: var(--accent); background: var(--accent-soft); }
 .export-format > span { display: flex; flex-direction: column; }
 .export-format .muted { font-size: 13px; }
+/* Export for iPad (12.2) */
+.ipad-export { display: flex; flex-direction: column; gap: 10px; }
+.ipad-export .export-format.is-disabled { opacity: 0.6; cursor: default; }
+.ipad-export .ipad-folder { word-break: break-all; }
+.ipad-export .export-format .link-btn { align-self: flex-start; font-size: 13px; }
+.ipad-export .ipad-how { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; margin: 0; }
+.ipad-export .ipad-how svg { flex-shrink: 0; margin-top: 2px; }
 .export-titlepage { display: grid; gap: 6px; padding: 4px 0 4px 26px; }
 .export-titlepage .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 @media (max-width: 560px) { .export-titlepage .field-row { grid-template-columns: 1fr; } }

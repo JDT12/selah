@@ -7,6 +7,7 @@ import MarkComplete, { useComplete } from './MarkComplete.jsx';
 import OutlineEditor from './OutlineEditor.jsx';
 import { presentNote, printHandout } from './PresentMode.jsx';
 import { exportManuscript } from './ManuscriptExport.jsx';
+import { exportForIpad } from './IpadExport.jsx';
 import { teachNote } from './PreachMode.jsx';
 import SlidesEditor from './SlidesEditor.jsx';
 import { Area, TextPane } from './StudyBuilder.jsx';
@@ -447,6 +448,11 @@ export default function LessonBuilder({ noteId, close }) {
     if (dirty && !(await save())) return;
     exportManuscript(dialog, noteId);
   };
+  // The export gives the note's blocks ids; the builder then carries on from the note with them.
+  const ipad = async () => {
+    if (dirty && !(await save())) return;
+    exportForIpad(dialog, noteId, { title: meta.title, onIds: ({ html, updated_at }) => { base.current = updated_at; setModel(parseLesson(html)); } });
+  };
   const handout = async () => {
     if (dirty && !(await save())) return;
     printHandout(dialog, noteId, { mainPoints: true });
@@ -617,12 +623,13 @@ export default function LessonBuilder({ noteId, close }) {
         {timing}
         <div className="gb-sermon">
           <p className="sb-part-head"><strong>Teach It</strong></p>
-          <p>Teach from the lesson in teach mode (its steps’ timing, the questions to tick off, and its slides), present its slides on a screen, print a class handout (the main points and the questions, with room to write), or export your teaching manuscript as PDF, Word or rich text.</p>
+          <p>Teach from the lesson in teach mode (its steps’ timing, the questions to tick off, and its slides), present its slides on a screen, print a class handout (the main points and the questions, with room to write), export your teaching manuscript as PDF, Word or rich text, or export it for Selah Companion on your iPad.</p>
           <div className="gb-forward-btns">
             <button type="button" className="btn btn-primary" disabled={busy} onClick={teachIt}><Icon name="play" size={14} /> Teach the lesson</button>
             <button type="button" className="btn" disabled={busy} onClick={present}><Icon name="monitor" size={14} /> Present the slides</button>
             <button type="button" className="btn" disabled={busy} onClick={handout}><Icon name="file" size={14} /> Print a class handout</button>
             <button type="button" className="btn" disabled={busy} onClick={exportIt}><Icon name="download" size={14} /> Export the manuscript</button>
+            <button type="button" className="btn" disabled={busy} onClick={ipad}><Icon name="tablet" size={14} /> Export for iPad</button>
           </div>
         </div>
       </>

@@ -61,4 +61,7 @@ write('desktop-app/build/icon-mac.png', await png(mac, 1024));
 const template = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 9 48 48"><path d="M10 44A22 22 0 0 1 54 44L52 44A20 16 0 0 0 12 44Z" fill="#000"/><circle cx="32" cy="39" r="5" fill="#000"/></svg>';
 write('desktop-app/build/trayTemplate.png', await png(template, 16));
 write('desktop-app/build/trayTemplate@2x.png', await png(template, 32));
+// 12.2 Selah Companion (iPad): the brown rail tile, full bleed (iOS rounds the corners itself), 1024 square.
+const ipad = rail.replace(/<rect x="2" y="2" width="60" height="60" rx="14"/, '<rect x="0" y="0" width="64" height="64"');
+write('companion/Companion/Resources/Assets.xcassets/AppIcon.appiconset/icon-1024.png', await png(ipad, 1024));
 await browser.close();

@@ -9,6 +9,7 @@ import Icon from './Icon.jsx';
  * Settings for Selah Desktop (12.0, desktop-app/):
  * - DesktopBackups (Data & backup): automatic backups to a folder (server/desktopbackup.js), Restore from one,
  *   Import a library from any backup file. Restoring replaces the whole library; the app restarts its server.
+ * - IpadExportFolder (Data & backup): the folder Export for iPad saves into (12.2, server/lessonexport.js).
  * - DesktopAppRow (General → App): start at sign-in, the lock, Offline or a Cloud server, updates. Those live in
  *   the app (window.selahDesktop), not the library.
  */
@@ -182,6 +183,37 @@ export function DesktopBackups() {
           below and restore it there.
         </span>
         <button className="btn btn-small" onClick={importLibrary} disabled={busy}><Icon name="import" size={13} /> Import a library…</button>
+      </div>
+    </>
+  );
+}
+
+/** Export for iPad's folder: where sermons and lessons go for Selah Companion (a folder the iPad's Files app reaches). */
+export function IpadExportFolder() {
+  const dialog = useDialog();
+  const [s, setS] = useState(null);
+  useEffect(() => { api.ipadExportSettings().then(setS).catch(() => setS(null)); }, []);
+  if (!s?.desktop) return null;
+  const save = async (folder) => {
+    try { const r = await api.setIpadExportSettings({ folder }); setS((x) => ({ ...x, folder: r.folder })); } catch (e) { dialog.toast(e.message, 'error', 7000); }
+  };
+  const choose = async () => {
+    const picked = await electron()?.pickFolder({ title: 'Choose a folder your iPad can open', defaultPath: s.folder ?? s.suggested });
+    if (picked) await save(picked);
+  };
+  return (
+    <>
+      <h3>Selah Companion (iPad)</h3>
+      <div className="about-row">
+        <span className="muted">
+          {s.folder ? <>Export for iPad saves sermons and lessons in <strong>{s.folder}</strong>.</>
+            : <>Export for iPad (in Preach and Teach, and the builders’ last step) can save straight into a folder your iPad opens, in iCloud Drive, OneDrive or Google Drive. Suggested: <strong>{s.suggested}</strong></>}
+        </span>
+        <span className="about-btns">
+          {!s.folder && <button className="btn btn-small btn-primary" onClick={() => save(s.suggested)}>Use this folder</button>}
+          <button className="btn btn-small" onClick={choose}>{s.folder ? 'Change…' : 'Choose…'}</button>
+          {s.folder && <button className="btn btn-small" onClick={() => save(null)}>Stop using it</button>}
+        </span>
       </div>
     </>
   );

@@ -290,6 +290,20 @@ export const api = {
   removeSermon: (id) => request('DELETE', `/api/sermons/${id}`),
   noteSermon: (noteId) => request('GET', `/api/notes/${noteId}/sermon`),
   slides: (noteId) => request('GET', `/api/notes/${noteId}/slides`),
+  // Export for iPad (12.2): block ids, the last export, the package (as a file, or into the Desktop export folder).
+  blockIds: (noteId) => request('POST', `/api/notes/${noteId}/block-ids`),
+  ipadExportInfo: (noteId) => request('GET', `/api/notes/${noteId}/ipad-export`),
+  ipadExportToFolder: (noteId, body) => request('POST', `/api/notes/${noteId}/ipad-export`, { ...body, save: 'folder' }),
+  ipadExportFile: async (noteId, body) => {
+    const res = await fetch(`/api/notes/${noteId}/ipad-export`, { method: 'POST', headers: { 'X-Client-Id': clientId, 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, save: 'download' }) });
+    if (!res.ok) {
+      const data = res.headers.get('content-type')?.includes('json') ? await res.json().catch(() => null) : null;
+      throw new Error(data?.error || `${res.status} ${res.statusText}`);
+    }
+    return { blob: await res.blob(), version: Number(res.headers.get('X-Selah-Version')) || null };
+  },
+  ipadExportSettings: () => request('GET', '/api/ipad-export/settings'),
+  setIpadExportSettings: (body) => request('PUT', '/api/ipad-export/settings', body),
   saveSlides: (noteId, deck) => request('PUT', `/api/notes/${noteId}/slides`, { deck }),
   slidesLive: (state) => request('PUT', '/api/slides/live', state),
   /** Sent with keepalive, so it still goes when the window is closing. */
