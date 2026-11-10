@@ -54,7 +54,7 @@ export default function TagsPage({ tree, onRefresh, onOpen, onMenu }) {
           <p className="muted">{tags ? plural(tags.length, 'tag') : '…'} · {plural(tree.untagged ?? 0, 'untagged note')}</p>
         </div>
         <div className="page-actions">
-          <button className="btn" onClick={() => onOpen({ type: 'untagged' })}><Icon name="note" size={16} /> Untagged notes</button>
+          <button className="btn" data-read="" onClick={() => onOpen({ type: 'untagged' })}><Icon name="note" size={16} /> Untagged notes</button>
           <button className="btn btn-primary" onClick={actions.create}><Icon name="plus" size={16} /> New tag</button>
         </div>
       </header>
@@ -62,7 +62,7 @@ export default function TagsPage({ tree, onRefresh, onOpen, onMenu }) {
       <div className="nb-toolbar">
         <label className="nb-search">
           <Icon name="search" size={16} className="muted" />
-          <input placeholder="Find a tag…" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input data-read="" placeholder="Find a tag…" value={query} onChange={(e) => setQuery(e.target.value)} />
         </label>
         <label className="nb-sort">
           <span className="muted">Sort</span>

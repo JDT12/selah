@@ -225,6 +225,21 @@ export default async function captureRoutes(app) {
   // The share menu posts here (manifest share_target). The share waits on disk until the app, signed in, claims it,
   // so nothing is lost if the browser leaves out the sign-in cookie.
   app.post('/share', async (req, reply) => {
+    const token = await receiveShare(req);
+    return reply.redirect(`/?share=${token}#inbox`, 303);
+  });
+
+  // 13.0: the phone and tablet app's share menu (signed in), saved to the Inbox at once: -> { id, title }.
+  app.post('/api/share', async (req) => claimShare(await receiveShare(req)));
+
+  app.post('/api/share/:token/claim', async (req) => {
+    const token = String(req.params.token);
+    if (!/^[a-f0-9]{32}$/.test(token)) throw httpError(400, 'Invalid share');
+    return claimShare(token);
+  });
+
+  /** A share's fields (title, text, url) and files, kept on disk under a new token until claimShare. */
+  async function receiveShare(req) {
     cleanShares();
     const token = crypto.randomBytes(16).toString('hex');
     const dir = path.join(SHARE_DIR, token);
@@ -251,12 +266,11 @@ export default async function captureRoutes(app) {
       throw e;
     }
     fs.writeFileSync(path.join(dir, 'share.json'), JSON.stringify({ ...fields, files }));
-    return reply.redirect(`/?share=${token}#inbox`, 303);
-  });
+    return token;
+  }
 
-  app.post('/api/share/:token/claim', async (req) => {
-    const token = String(req.params.token);
-    if (!/^[a-f0-9]{32}$/.test(token)) throw httpError(400, 'Invalid share');
+  /** A waiting share saved to the Inbox as a note, with its files attached: { id, title }. */
+  async function claimShare(token) {
     const dir = path.join(SHARE_DIR, token);
     let share;
     try { share = JSON.parse(fs.readFileSync(path.join(dir, 'share.json'), 'utf8')); } catch { throw httpError(404, 'That share was already saved.'); }
@@ -282,7 +296,7 @@ export default async function captureRoutes(app) {
     });
     fs.rmSync(dir, { recursive: true, force: true });
     return { id, title };
-  });
+  }
 
   // ---- clipper: pairing and keys (signed in) ----
   // Pairing makes a key that lasts until it's removed, so it needs the password (and code) entered recently.

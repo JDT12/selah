@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import DeviceReadOnly from '../components/DeviceReadOnly.jsx';
+import { device } from '../device.js';
 import Icon from '../components/Icon.jsx';
 import { Menu, useDialog } from '../components/Dialogs.jsx';
 import { api } from '../api.js';
@@ -115,14 +117,14 @@ export default function DeskPage({ tree, onOpenNote, onPeekNote, onOpenScripture
   const deleteWork = useDeleteWork(() => { load(); onChanged(); });
 
   if (open?.course) {
-    return <CourseView id={open.id} tree={tree} onBack={back} backLabel="Teach" onOpenNote={onPeekNote}
-      onChanged={() => { load(); onChanged(); }} onMenu={onMenu} StudyNotes={StudyNotes} />;
+    return <DeviceReadOnly on={!device.full}><CourseView id={open.id} tree={tree} onBack={back} backLabel="Teach" onOpenNote={onPeekNote}
+      onChanged={() => { load(); onChanged(); }} onMenu={onMenu} StudyNotes={StudyNotes} /></DeviceReadOnly>;
   }
   if (open) {
     // Notes open in a panel over the study (so you stay in it), and the study refreshes when it closes.
-    return <StudyDetail id={open.id} tree={tree} onBack={back} onCourse={(id) => setOpen({ id, course: true })} onOpenNote={onPeekNote ?? onOpenNote}
+    return <DeviceReadOnly on={!device.full}><StudyDetail id={open.id} tree={tree} onBack={back} onCourse={(id) => setOpen({ id, course: true })} onOpenNote={onPeekNote ?? onOpenNote}
       onOpenScripture={onOpenScripture} onChanged={() => { load(); onChanged(); }} onMenu={onMenu}
-      backLabel={DESK_TABS.find((t) => t.key === deskTabOf(all?.find((x) => x.id === open.id) ?? {}))?.label ?? 'Desk'} />;
+      backLabel={DESK_TABS.find((t) => t.key === deskTabOf(all?.find((x) => x.id === open.id) ?? {}))?.label ?? 'Desk'} /></DeviceReadOnly>;
   }
 
   const rows = rowsOn(current.key, work, all);
@@ -165,8 +167,8 @@ export default function DeskPage({ tree, onOpenNote, onPeekNote, onOpenScripture
           <h1>Desk</h1>
         </div>
         <div className="page-actions">
-          {current.key === 'learn' && <button className="btn" onClick={importClasses}><Icon name="import" size={15} /> Past classes…</button>}
-          {newButton}
+          {device.full && current.key === 'learn' && <button className="btn" onClick={importClasses}><Icon name="import" size={15} /> Past classes…</button>}
+          {device.full && newButton}
         </div>
       </header>
       <div className="home-tabs" role="tablist" aria-label="Desk">
@@ -189,7 +191,8 @@ export default function DeskPage({ tree, onOpenNote, onPeekNote, onOpenScripture
         </div>
       )}
 
-      {(all && work) && !rows.length && (
+      {!device.full && all && work && !rows.length && <p className="nb-empty">Nothing here yet. You can start it on the web or in Selah Desktop.</p>}
+      {device.full && (all && work) && !rows.length && (
         <section className="studies-start">
           <h2>{starts.title}</h2>
           <p className="muted">{starts.text}</p>
@@ -206,8 +209,8 @@ export default function DeskPage({ tree, onOpenNote, onPeekNote, onOpenScripture
       )}
       {!(all && work) && <p className="muted">Loading…</p>}
 
-      {board && <AllWritingBoard api={api} dialog={dialog} onOpenNote={onPeekNote ?? onOpenNote} />}
-      {!board && rows.length > 0 && <WorkList tab={current.key} rows={rows} mode="desk" onMarkDone={markDone} onDelete={deleteWork} />}
+      {board && <DeviceReadOnly on={!device.full}><AllWritingBoard api={api} dialog={dialog} onOpenNote={onPeekNote ?? onOpenNote} /></DeviceReadOnly>}
+      {!board && rows.length > 0 && <WorkList tab={current.key} rows={rows} mode="desk" onMarkDone={device.full ? markDone : undefined} onDelete={device.full ? deleteWork : undefined} />}
     </div>
   );
 }

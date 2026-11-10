@@ -9,6 +9,7 @@ import { broadcast } from './events.js';
 import { methodOfNote } from './methods.js';
 import { itemsOf } from './studies.js';
 import { importPackage } from './notepack.js';
+import { pushToAll } from './push.js';
 
 /**
  * Sharing between tenants (8.0): notes, notebooks and projects (Desk studies) shared live and read-only with
@@ -337,6 +338,7 @@ function receiveSnapshot(from, fromName, id) {
     if (existing && (changedNotes || count !== before.size || title !== existing.title)) db.prepare('UPDATE shares_in SET updated_at = ? WHERE id = ?').run(now, id);
   });
   if (!existing || changedNotes) changed(existing ? 'updated' : 'new', { share: id, from: fromName || from, title });
+  if (!existing) pushToAll(`${fromName || from} shared with you`, title || 'Something new', { section: 'shared' });
   else changed('quiet', { share: id });
 }
 
@@ -388,7 +390,7 @@ function receive(msg) {
     case 'contact-request':
       if (!from) return;
       if (contact(from)?.status === 'outgoing') { setContact(from, 'accepted', msg.name); send({ type: 'contact-accept', to: from }); changed('contacts', { from: msg.name || from, accepted: true }); return; }
-      if (!isContact(from)) setContact(from, 'incoming', msg.name);
+      if (!isContact(from)) { setContact(from, 'incoming', msg.name); pushToAll(`${msg.name || from} wants to share with you`, 'Open Shared with me to answer.', { section: 'shared' }); }
       changed('contacts', { from: msg.name || from, request: true });
       return;
     case 'contact-accepted':

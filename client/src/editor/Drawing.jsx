@@ -23,7 +23,10 @@ const LINE = 40; // paper line spacing
 const PEN_COLORS = { ink: null, blue: '#2f6fd6', red: '#d93b30', green: '#2f9a5c', orange: '#e07b16' };
 const HIGHLIGHT_COLORS = { yellow: '#f5d000', green: '#5fd38d', pink: '#ff7eb6', blue: '#6cb6ff' };
 const SIZES = [2, 4, 8];
-const PAPERS = ['blank', 'lined', 'grid'];
+const PAPERS = ['blank', 'lined', 'grid', 'cornell'];
+const CUE = 280; // Cornell paper's cue column
+/** 13.0: a handwritten note opens its drawing full screen once (App.jsx sets this as it makes the note). */
+export const OPEN_FULL_KEY = 'noteapp.draw.openFull';
 
 // ---- stroke encoding: { t: 'p'|'h', c: color, w: width, d: [x, y, p, dx, dy, dp, ...] } ----
 // x/y are stored in half units, pressure as 0-100, all delta-encoded to keep notes small.
@@ -114,6 +117,8 @@ function drawPaper(ctx, paper, height, color) {
   for (let y = LINE; y < height; y += LINE) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
   if (paper === 'grid') for (let x = LINE; x < W; x += LINE) { ctx.moveTo(x, 0); ctx.lineTo(x, height); }
   ctx.stroke();
+  // Cornell: cues on the left, notes on the right (the summary goes at the end, below a line you draw).
+  if (paper === 'cornell') { ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(CUE, 0); ctx.lineTo(CUE, height); ctx.stroke(); }
   ctx.restore();
 }
 
@@ -201,6 +206,14 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
   const [hlColor, setHlColor] = useStoredState('noteapp.draw.hlColor', 'yellow');
   const [size, setSize] = useStoredState('noteapp.draw.size', 4);
   const [fingerDraws, setFingerDraws] = useStoredState('noteapp.draw.finger', !penSeenBefore());
+  // 13.0: the whole screen to write on, the tools along the top. Opens by itself for a new handwritten note.
+  const [full, setFull] = useState(() => {
+    try {
+      const at = Number(sessionStorage.getItem(OPEN_FULL_KEY));
+      if (editable && at && Date.now() - at < 8000) { sessionStorage.removeItem(OPEN_FULL_KEY); return true; }
+    } catch { /* storage unavailable */ }
+    return false;
+  });
 
   // Strokes being edited locally; reset whenever the saved attribute changes (undo, remote edit).
   const saved = node.attrs.strokes;
@@ -239,6 +252,17 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
 
   useEffect(() => { renderBase(); }, [renderBase, decoded, themeVersion]);
 
+  // Full screen: at least a screenful of paper, and Esc to come back.
+  useEffect(() => {
+    if (!full || !scale) return undefined;
+    const fill = Math.min(MAX_H, Math.ceil((window.innerHeight - 60) / scale));
+    if (height < fill) { setHeight(fill); updateAttributes({ height: fill }); }
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setFull(false); } };
+    window.addEventListener('keydown', onKey, true);
+    document.body.classList.add('has-full-drawing');
+    return () => { window.removeEventListener('keydown', onKey, true); document.body.classList.remove('has-full-drawing'); };
+  }, [full, scale]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const commit = (next, nextHeight = height) => {
     history.current.undo.push({ strokes: strokes.current, height });
     if (history.current.undo.length > 100) history.current.undo.shift();
@@ -265,7 +289,7 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
     return { x: (e.clientX - r.left) / scale, y: (e.clientY - r.top) / scale, p: Math.min(1, p) };
   };
 
-  const isEraseButton = (e) => (e.buttons & 32) !== 0 || (e.pointerType === 'pen' && (e.buttons & 2) !== 0);
+  const isEraseButton = (e) => (e.buttons & 32) !== 0 || e.button === 5 || (e.pointerType === 'pen' && ((e.buttons & 2) !== 0 || e.button === 2));
 
   const drawLive = () => {
     const g = gesture.current;
@@ -295,7 +319,7 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
     capture(e);
 
     if (e.pointerType === 'touch' && !fingerDraws) {
-      const scroller = wrapRef.current.closest('.editor-scroll') ?? document.scrollingElement;
+      const scroller = (full ? wrapRef.current.closest('.drawing') : null) ?? wrapRef.current.closest('.editor-scroll') ?? document.scrollingElement;
       gesture.current = { kind: 'scroll', id: e.pointerId, pointerType: 'touch', y: e.clientY, scroller };
       return;
     }
@@ -415,7 +439,7 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
   const keepFocus = (e) => e.target.closest('select') || e.preventDefault();
 
   return (
-    <NodeViewWrapper className={`drawing ${selected ? 'is-selected' : ''} ${editable ? 'is-editable' : ''}`}
+    <NodeViewWrapper className={`drawing ${selected ? 'is-selected' : ''} ${editable ? 'is-editable' : ''} ${full && editable ? 'is-full' : ''}`}
       data-paper={node.attrs.paper}>
       {editable && (
         <div className="drawing-tools" contentEditable={false} onMouseDown={keepFocus}>
@@ -468,9 +492,12 @@ function DrawingView({ node, updateAttributes, editor, deleteNode, selected, get
             <button type="button" className="tb-btn" title="Redo stroke" aria-label="Redo stroke"
               disabled={!history.current.redo.length} onClick={() => restore('redo', 'undo')}><Icon name="redo" size={17} /></button>
             <button type="button" className="btn btn-small" onClick={clear}>Clear</button>
-            <button type="button" className="tb-btn" title="Delete drawing" aria-label="Delete drawing" onClick={() => deleteNode()}>
+            {!full && <button type="button" className="tb-btn" title="Delete drawing" aria-label="Delete drawing" onClick={() => deleteNode()}>
               <Icon name="trash" size={16} />
-            </button>
+            </button>}
+            {full
+              ? <button type="button" className="btn btn-small btn-primary" onClick={() => setFull(false)}>Done</button>
+              : <button type="button" className="tb-btn" title="Full screen" aria-label="Full screen" onClick={() => setFull(true)}><Icon name="expand" size={16} /></button>}
           </span>
         </div>
       )}

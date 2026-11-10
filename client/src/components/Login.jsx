@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { isDesktopApp } from '../desktop.js';
+import { changeServer, isMobileApp } from '../mobile.js';
 import { api } from '../api.js';
 import { serverMode } from '../mode.js';
 import { useDialog } from './Dialogs.jsx';
 import CertificateHelp from './CertificateHelp.jsx';
 
 // Which app this is, so Settings → Security can name the device.
-export const appKind = () => (isDesktopApp() ? 'windows' : window.matchMedia?.('(display-mode: standalone)').matches ? 'installed' : '');
+export const appKind = () => (isMobileApp() ? 'mobile' : isDesktopApp() ? 'windows' : window.matchMedia?.('(display-mode: standalone)').matches ? 'installed' : '');
 
 const NO_PASSWORD = {
   single: <>No password has been set yet. On the server, run:<br /><code>npm run set-password</code></>,
@@ -89,6 +90,7 @@ export default function Login({ passwordSet, signInName = false, cert, onDone, t
             <button className="btn btn-primary btn-block" disabled={busy || !password || (signInName && !login.trim())}>Sign in</button>
           </>
         )}
+        {isMobileApp() && <button type="button" className="link-btn cert-link" onClick={changeServer}>Use a different Selah</button>}
         {cert && (
           <button type="button" className="link-btn cert-link"
             onClick={() => dialog.open((close) => <CertificateHelp cert={cert} close={close} />)}>

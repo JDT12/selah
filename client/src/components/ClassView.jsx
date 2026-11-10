@@ -87,7 +87,7 @@ export default function ClassView({ s, changed, onBack, backLabel, onOpenNote, o
         {extra}
         {item.date && <span className={`study-item-date ${late ? 'is-late' : ''}`}>{relativeDay(item.date)}</span>}
         {item.kind === 'session' && (
-          <button type="button" className="btn btn-small" onClick={() => openItemNote(item)}>
+          <button type="button" className="btn btn-small" data-read={hasNote ? '' : undefined} onClick={() => openItemNote(item)}>
             <Icon name={hasNote ? 'note' : (s.data.lectureLayout === 'plain' ? 'plus' : 'cornell')} size={13} /> {hasNote ? 'Notes' : 'Take notes'}
           </button>
         )}
@@ -164,7 +164,7 @@ export default function ClassView({ s, changed, onBack, backLabel, onOpenNote, o
           <section className="class-syllabus">
             <div className="study-side-head">
               <h2>Syllabus</h2>
-              <button type="button" className="btn btn-small" onClick={() => setSection('syllabus')} title={s.data.syllabusPdf ? 'Show the syllabus PDF' : 'Import the syllabus PDF'}>
+              <button type="button" className="btn btn-small" data-read="" onClick={() => setSection('syllabus')} title={s.data.syllabusPdf ? 'Show the syllabus PDF' : 'Import the syllabus PDF'}>
                 <Icon name="pdf" size={13} /> {s.data.syllabusPdf ? 'PDF' : 'Import PDF'}
               </button>
               <button type="button" className="btn btn-small" onClick={actions.edit}>Edit…</button>
@@ -621,7 +621,7 @@ function SyllabusPdf({ s, syl, changed }) {
         <h2 className="syl-pdf-name" title={pdf.filename}><Icon name="pdf" size={16} /> <span>{pdf.filename}</span></h2>
         <div className="syl-pdf-actions">
           {busy && <span className="muted">{busy}</span>}
-          <button type="button" className="btn btn-small" onClick={() => setReader(true)}><Icon name="expand" size={13} /> Full screen</button>
+          <button type="button" className="btn btn-small" data-read="" onClick={() => setReader(true)}><Icon name="expand" size={13} /> Full screen</button>
           <button type="button" className="btn btn-small" disabled={!!busy} onClick={fillAgain} title="Read the PDF again and fill in the class’s details"><Icon name="bolt" size={13} /> Fill in details</button>
           <Menu align="right" trigger={({ toggle: tg }) => <button type="button" className="icon-btn" onClick={tg} aria-label="More"><Icon name="more" size={16} /></button>} items={[
             { label: 'Download', onClick: () => { const a = document.createElement('a'); a.href = `${fileUrl(pdf.id)}?download=1`; a.click(); } },

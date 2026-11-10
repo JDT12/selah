@@ -30,6 +30,7 @@ Selah's log.
 | Lost the console's two-step phone | `npm run admin -- reset-two-step`, then sign in and set it up again |
 | Someone forgot their password | Console → Tenants → **Setup link**: they choose a new password |
 | A Selah shows "Paused" | Console → Tenants → **Resume** |
+| The Selah apps don't get pushes | `npm run admin -- push-keys` shows which keys are set ([Phones, tablets and notifications](cloud-install.md#5-phones-tablets-and-notifications)). Reminders still come from the phone itself; on Android 14 and later, people turn on on-time reminders in the app's Settings |
 | Nothing answers after a reboot | `systemctl --user status selah-admin selah-gateway`. Linger must be on: `loginctl show-user $USER -p Linger` |
 
 ### Server maintenance

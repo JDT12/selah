@@ -209,11 +209,11 @@ export default async function slideRoutes(app) {
     return { ok: true };
   });
 
-  // Body: { note, cmd: 'next' | 'prev' | 'black' }: a remote's button, for the window presenting that note.
+  // Body: { note, cmd: 'next' | 'prev' | 'black' | 'timer' }: a remote's button, for the window presenting that note.
   app.post('/api/slides/live/command', async (req) => {
     const note = intParam(req.body?.note);
     const cmd = req.body?.cmd;
-    if (!['next', 'prev', 'black'].includes(cmd)) throw httpError(400, 'Unknown command');
+    if (!['next', 'prev', 'black', 'timer'].includes(cmd)) throw httpError(400, 'Unknown command');
     if (!current() || current().note !== note) throw httpError(409, 'That isn’t being presented now');
     broadcast({ slides: 'cmd', note, cmd });
     return { ok: true };
@@ -225,6 +225,21 @@ export default async function slideRoutes(app) {
     const url = `https://${host}/#remote`;
     const svg = await QRCode.toString(url, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' });
     return { url, svg };
+  });
+
+  // 13.0: ink written on a sermon or lesson in Preach and Teach (PreachInk.jsx): { strokes: [...] }.
+  app.get('/api/notes/:id/ink', async (req) => {
+    const id = intParam(req.params.id);
+    return { strokes: parseData(getSetting(`preach_ink_${id}`) ?? '{}').strokes ?? [] };
+  });
+  app.put('/api/notes/:id/ink', async (req) => {
+    const id = intParam(req.params.id);
+    if (!db.prepare('SELECT 1 FROM notes WHERE id = ?').get(id)) throw httpError(404, 'Note not found');
+    const strokes = Array.isArray(req.body?.strokes) ? req.body.strokes : [];
+    const json = JSON.stringify({ strokes });
+    if (json.length > 2_000_000) throw httpError(413, 'That’s more ink than one note can keep');
+    setSetting(`preach_ink_${id}`, json);
+    return { ok: true, count: strokes.length };
   });
 
   app.get('/api/slides/brand', async () => getBrand());

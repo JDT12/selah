@@ -67,6 +67,42 @@ chooses a password and turns on two-step sign-in. Their Selah is at `https://<na
 
 With per-name certificates (option 1), a new name gets its certificate within a minute of being made.
 
+## 5. Phones, tablets and notifications
+
+People can use their Selah from any phone or tablet browser, and add it to the home screen (Safari: **Share → Add to
+Home Screen**; Chrome: **Install app**).
+
+The **Selah apps** for iPhone, iPad and Android (13.0) add quick capture, **Share to Selah** from other apps, Preach
+and Teach on a tablet, a Teach remote on the phone, sermons and lessons saved for offline use, and reminders. For now
+the apps sign in only to the hosted Selah Cloud; on your own server, use the browser.
+
+Reminders for events, tasks and the Daily Walk are scheduled on the phone itself and need nothing on the server. Push
+notifications add the rest: a reminder added on another device while the app was closed, a quiet "check for changes"
+so the app stays current, and shares and contact requests from other people. Only the host sends them, with keys from
+whoever publishes the apps; Selahs never hold the keys. To set them up, from `~/selah`:
+
+1. **Apple (iPhone and iPad).** In the Apple Developer account that signs the app, under **Certificates, Identifiers
+   & Profiles → Keys**, make a key with **Apple Push Notifications service (APNs)** turned on. Download the
+   `AuthKey_<Key ID>.p8` file (Apple offers it only once), copy it to the server and run:
+
+   ```bash
+   npm run admin -- push-keys apns AuthKey_<Key ID>.p8 --key-id <Key ID> --team <Team ID> --bundle <the app's bundle ID>
+   ```
+
+   Add `--sandbox` only for apps built for development, not TestFlight or the App Store.
+
+2. **Google (Android).** In the app's Firebase project, open **Project settings → Service accounts → Generate new
+   private key**, copy the JSON file to the server and run:
+
+   ```bash
+   npm run admin -- push-keys fcm <service-account.json>
+   ```
+
+3. Check both with `npm run admin -- push-keys`, then delete the copies you uploaded. The console uses the keys at
+   once, without a restart. `push-keys remove apns` (or `fcm`) takes one away.
+
+Keep the `.p8` file and the service account somewhere safe off the server: they're as sensitive as a password.
+
 ## The console from somewhere else
 
 The console answers only from the addresses you list. When your home address changes, from the server:
@@ -85,6 +121,7 @@ From `~/selah`:
 | `npm run admin -- tenants` | Lists the Selahs |
 | `npm run admin -- create <name>` | A new Selah and its setup link |
 | `npm run admin -- setup-link <name>` | A fresh setup link (forgotten password) |
+| `npm run admin -- push-keys` | Which push keys are set for the Selah apps |
 | `npm run admin -- reset-two-step` | Resets the console's two-step sign-in, when you've lost the phone |
 | `npm run admin -- maintenance-stop` / `maintenance-start` | Stops and starts everything around server maintenance |
 | `bash scripts/update.sh` | [Updates](updates.md) to the newest release |

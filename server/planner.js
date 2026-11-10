@@ -221,6 +221,9 @@ function serializeOccurrence(row, o) {
     start: o.start,
     end: o.end,
     note_id: row.note_id,
+    // 13.0: the linked note's title, and the attendance group that meets at this event (for the apps' notifications).
+    note_title: row.note_title ?? null,
+    attendance: row.att_group_id ? { id: row.att_group_id, name: row.att_group_name } : null,
     reminders: parseReminders(row.reminders),
     // A course's class (5.12): the study it belongs to, to open the course week.
     course_study_id: row.course_study_id ?? null,
@@ -230,9 +233,11 @@ function serializeOccurrence(row, o) {
 function occurrencesBetween(from, to) {
   const rows = db.prepare(`
     SELECT e.*, p.rrule AS parent_rrule, c.name AS cat_name, c.color AS cat_color, c.icon AS cat_icon, c.reminders AS cat_reminders,
-      si.study_id AS course_study_id
+      si.study_id AS course_study_id, n.title AS note_title,
+      (SELECT g.id FROM att_groups g WHERE g.archived = 0 AND g.event_id IN (e.id, e.parent_id) ORDER BY g.id LIMIT 1) AS att_group_id,
+      (SELECT g.name FROM att_groups g WHERE g.archived = 0 AND g.event_id IN (e.id, e.parent_id) ORDER BY g.id LIMIT 1) AS att_group_name
     FROM events e LEFT JOIN events p ON p.id = e.parent_id LEFT JOIN event_categories c ON c.id = e.category_id
-    LEFT JOIN study_items si ON si.id = e.study_item_id
+    LEFT JOIN study_items si ON si.id = e.study_item_id LEFT JOIN notes n ON n.id = e.note_id AND n.deleted_at IS NULL
     WHERE (e.rrule IS NULL AND e.start_at < ? AND e.end_at >= ?) OR (e.rrule IS NOT NULL AND e.start_at < ?)`)
     .all(to, from, to);
   const out = [];
@@ -404,6 +409,14 @@ function dashboardBanner() {
   }
 }
 
+/** Events (each occurrence) and tasks due from `from` up to `to`, as GET /api/calendar gives them (also server/push.js). */
+export function calendarBetween(from, to) {
+  return {
+    events: occurrencesBetween(from, to),
+    tasks: withTaskCategories(taskRows(db.prepare(`${TASK_SELECT} WHERE t.due_date >= ? AND t.due_date < ? ${TASK_ORDER}`).all(from, to))),
+  };
+}
+
 export default async function planner(app) {
   // ---------- dashboard ----------
   app.get('/api/dashboard', async () => {
@@ -432,10 +445,7 @@ export default async function planner(app) {
     const { from, to } = req.query;
     if (!DATE_RE.test(from ?? '') || !DATE_RE.test(to ?? '')) throw httpError(400, 'from/to must be YYYY-MM-DD');
     if ((toDate(to) - toDate(from)) / 86_400_000 > 750) throw httpError(400, 'Range too large');
-    return {
-      events: occurrencesBetween(from, to),
-      tasks: withTaskCategories(taskRows(db.prepare(`${TASK_SELECT} WHERE t.due_date >= ? AND t.due_date < ? ${TASK_ORDER}`).all(from, to))),
-    };
+    return calendarBetween(from, to);
   });
 
   // ---------- events ----------

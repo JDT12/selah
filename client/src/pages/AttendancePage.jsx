@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { device } from '../device.js';
 import { api } from '../api.js';
 import { onLive } from '../live.js';
 import { Menu, useDialog } from '../components/Dialogs.jsx';
@@ -6,6 +7,7 @@ import Icon from '../components/Icon.jsx';
 import PlanTabs from './PlanTabs.jsx';
 import { formatShortDate, todayStr } from '../time.js';
 import { useStoredState } from '../useStoredState.js';
+import { lastFirst } from '../../../shared/names.js';
 
 /**
  * Plan → Attendance (11.0): the classes you teach, the services you preach and your small groups. Each group keeps a
@@ -131,8 +133,9 @@ function Nudge({ n, onDone }) {
 }
 
 /** The meeting you're taking: tap names, add a visitor, or type a headcount. */
-function Meeting({ g, meeting, onChanged }) {
+function Meeting({ g, meeting, onChanged, onManage }) {
   const dialog = useDialog();
+  const [filter, setFilter] = useState('');
   const [present, setPresent] = useState(() => new Set(meeting.present));
   const [headcount, setHeadcount] = useState(meeting.headcount ?? '');
   const [notes, setNotes] = useState(meeting.notes ?? '');
@@ -140,8 +143,11 @@ function Meeting({ g, meeting, onChanged }) {
   useEffect(() => { setPresent(new Set(meeting.present)); setHeadcount(meeting.headcount ?? ''); setNotes(meeting.notes ?? ''); }, [meeting]);
   const fail = (e) => dialog.toast(e.message, 'error');
   const roster = g.roster.filter((p) => p.active && p.since <= meeting.date);
-  const members = roster.filter((p) => !p.visitor);
-  const visitors = roster.filter((p) => p.visitor);
+  const needle = filter.trim().toLowerCase();
+  const matches = (p) => !needle || p.name.toLowerCase().includes(needle) || lastFirst(p.name).toLowerCase().includes(needle);
+  const allMembers = roster.filter((p) => !p.visitor);
+  const members = allMembers.filter(matches);
+  const visitors = roster.filter((p) => p.visitor && matches(p));
   const toggle = async (p) => {
     const on = !present.has(p.id);
     setPresent((s) => { const n = new Set(s); if (on) n.add(p.id); else n.delete(p.id); return n; });
@@ -183,7 +189,7 @@ function Meeting({ g, meeting, onChanged }) {
     <li key={p.id}>
       <button type="button" className={`atn-person ${present.has(p.id) ? 'is-here' : ''}`} aria-pressed={present.has(p.id)} onClick={() => toggle(p)}>
         <span className="atn-check"><Icon name={present.has(p.id) ? 'check' : 'plus'} size={15} /></span>
-        <span className="atn-person-name">{p.name}</span>
+        <span className="atn-person-name" title={p.name}>{lastFirst(p.name)}</span>
         {p.missed >= 3 && !present.has(p.id) && <span className="atn-tag is-late" title={`Missed ${p.missed} in a row`}>Missed {p.missed}</span>}
         {p.visitor && <span className="atn-tag">Visitor</span>}
       </button>
@@ -203,15 +209,20 @@ function Meeting({ g, meeting, onChanged }) {
       </header>
       {g.mode === 'roster' ? (
         <>
-          {members.length > 0 && (
+          {roster.length > 0 && (
             <div className="atn-list-head">
               <span className="muted">Tap who's here</span>
+              <input className="input atn-filter" type="search" value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter names" aria-label="Filter names" />
               <button type="button" className="link-btn" onClick={everyone}>Everyone's here</button>
             </div>
           )}
-          {!roster.length && <p className="muted">No one on the roster yet. Add people below, or a visitor.</p>}
-          <ul className="atn-people">{members.map(person)}</ul>
+          {!roster.length && <p className="muted">No one on the roster yet. Add people, or a visitor.</p>}
+          {needle && !members.length && !visitors.length && <p className="muted">No names match “{filter.trim()}”.</p>}
+          {members.length > 0 && <ul className="atn-people">{members.map(person)}</ul>}
           {visitors.length > 0 && <><p className="atn-sub">Visitors</p><ul className="atn-people">{visitors.map(person)}</ul></>}
+          <div className="atn-manage">
+            {!device.phone && (<button type="button" className="btn btn-small" onClick={onManage}><Icon name="users" size={13} /> {allMembers.length ? 'Manage people' : 'Add people'}</button>)}
+          </div>
           <form className="atn-visitor" onSubmit={addVisitor}>
             <input className="input" value={visitor} onChange={(e) => setVisitor(e.target.value)} placeholder="A visitor’s name" aria-label="Visitor's name" />
             <button type="submit" className="btn" disabled={!visitor.trim()}><Icon name="plus" size={14} /> Add visitor</button>
@@ -236,7 +247,7 @@ function Meeting({ g, meeting, onChanged }) {
 }
 
 /** The roster: add, rename, make a visitor a member, take someone off. */
-function Roster({ g, onChanged }) {
+function Roster({ g, onChanged, onDone }) {
   const dialog = useDialog();
   const [adding, setAdding] = useState('');
   const fail = (e) => dialog.toast(e.message, 'error');
@@ -262,7 +273,7 @@ function Roster({ g, onChanged }) {
   };
   const row = (p) => (
     <li key={p.id} className={p.active ? '' : 'is-off'} onContextMenu={(e) => dialog.contextMenu(e, menu(p))}>
-      <span className="atn-roster-name">{p.name}{p.visitor && <span className="atn-tag">Visitor</span>}{!p.active && <span className="atn-tag">Off the roster</span>}</span>
+      <span className="atn-roster-name" title={p.name}>{lastFirst(p.name)}{p.visitor && <span className="atn-tag">Visitor</span>}{!p.active && <span className="atn-tag">Off the roster</span>}</span>
       <span className="muted">{p.possible ? `${p.attended} of ${p.possible}` : 'New'}</span>
       <Menu align="right" trigger={({ toggle }) => <button type="button" className="icon-btn" onClick={toggle} aria-label={`More for ${p.name}`}><Icon name="more" size={15} /></button>} items={menu(p)} />
     </li>
@@ -276,7 +287,10 @@ function Roster({ g, onChanged }) {
   ].filter(Boolean);
   return (
     <section className="atn-roster">
-      <h3>People <span className="muted">{g.roster.filter((p) => p.active).length}</span></h3>
+      <header className="atn-roster-head">
+        <h3>People <span className="muted">{g.roster.filter((p) => p.active).length}</span></h3>
+        <button type="button" className="btn btn-small btn-primary" onClick={onDone}>Done</button>
+      </header>
       <ul>{g.roster.filter((p) => p.active).map(row)}</ul>
       {g.roster.some((p) => !p.active) && <details><summary className="muted">Off the roster ({g.roster.filter((p) => !p.active).length})</summary><ul>{g.roster.filter((p) => !p.active).map(row)}</ul></details>}
       <form className="atn-add" onSubmit={add}>
@@ -288,13 +302,14 @@ function Roster({ g, onChanged }) {
   );
 }
 
-/** One group: its meetings as a strip of dates, the one you're taking, and its people. */
+/** One group: its meetings as a strip of dates and the one you're taking; Manage people swaps in the roster. */
 function GroupView({ id, onBack, onChanged }) {
   const dialog = useDialog();
   const [g, setG] = useState(null);
   const [date, setDate] = useState(null);
+  const [managing, setManaging] = useState(false);
   const load = useCallback(() => api.attendanceGroup(id).then(setG).catch((e) => dialog.toast(e.message, 'error')), [id, dialog]);
-  useEffect(() => { setG(null); setDate(null); load(); }, [load]);
+  useEffect(() => { setG(null); setDate(null); setManaging(false); load(); }, [load]);
   // Opens on today's meeting, or the latest one before today.
   const shown = useMemo(() => {
     if (!g) return null;
@@ -336,7 +351,7 @@ function GroupView({ id, onBack, onChanged }) {
           { label: 'Delete group…', danger: true, onClick: remove },
         ]} />
       </header>
-      {g.dates.length > 0 && (
+      {!managing && g.dates.length > 0 && (
         <div className="atn-dates" role="tablist" aria-label="Meetings">
           {g.dates.map((d) => (
             <button key={d.date} type="button" role="tab" aria-selected={shown?.date === d.date}
@@ -348,11 +363,10 @@ function GroupView({ id, onBack, onChanged }) {
           <button type="button" className="atn-date is-other" onClick={otherDate} title="Another day"><span>Other</span><strong>+</strong></button>
         </div>
       )}
-      {!g.event && !g.dates.length && <p className="muted">Not on the calendar, so pick the day: <button type="button" className="link-btn" onClick={otherDate}>take attendance for a day</button>, or Edit to follow a repeating event.</p>}
-      <div className="atn-cols">
-        {shown ? <Meeting g={g} meeting={shown} onChanged={changed} /> : <p className="muted">Pick a meeting above.</p>}
-        {g.mode === 'roster' && <Roster g={g} onChanged={changed} />}
-      </div>
+      {!managing && !g.event && !g.dates.length && <p className="muted">Not on the calendar, so pick the day: <button type="button" className="link-btn" onClick={otherDate}>take attendance for a day</button>, or Edit to follow a repeating event.</p>}
+      {managing && g.mode === 'roster'
+        ? <Roster g={g} onChanged={changed} onDone={() => setManaging(false)} />
+        : shown ? <Meeting g={g} meeting={shown} onChanged={changed} onManage={() => setManaging(true)} /> : <p className="muted">Pick a meeting above.</p>}
     </div>
   );
 }

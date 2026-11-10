@@ -5,6 +5,10 @@
 //                          set up the admin console, the gateway and the wildcard certificate (files: from the
 //                          home server's private CA; acme: Let's Encrypt through Cloudflare DNS, for a cloud server)
 //   dns-token              save the Cloudflare API token the gateway uses for Let's Encrypt (asks for it; acme only)
+//   push-keys [status | apns <AuthKey.p8> --key-id <id> --team <id> --bundle <app id> [--sandbox] | fcm <service-account.json> | remove apns|fcm]
+//                          the keys for pushing to the Selah apps (Apple's .p8 key, Google's Firebase service
+//                          account), copied to <cloud root>/push, readable only by this user; the console uses them
+//                          at once (no restart). Tenants never see them.
 //   install                install and start the selah-admin and selah-gateway services (systemd, this user)
 //   status                 the console, the gateway, the certificate and every tenant
 //   set-password           set the admin console's password
@@ -55,6 +59,7 @@ const argv = process.argv.slice(2);
 const cmd = argv[0] ?? 'help';
 const opt = (name, fallback = null) => { const i = argv.indexOf(name); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback; };
 const flag = (name) => argv.includes(name);
+const need = (name, what) => opt(name) ?? fail(`Give ${what}: ${name} <value>`);
 const VALUE_FLAGS = new Set(['--release', '--domain', '--port', '--admin-port', '--port-base', '--runner', '--prefix', '--ca', '--display', '--tls', '--email', '--allow-ip', '--from']);
 const positional = argv.slice(1).filter((a, i, all) => !a.startsWith('--') && !VALUE_FLAGS.has(all[i - 1]));
 const arg = (n) => positional[n];
@@ -197,6 +202,48 @@ switch (cmd) {
       ok(`Saved${g.loaded ? ' and loaded into the gateway' : ` (gateway: ${g.error})`}`);
     }
     console.log(list.length ? list.map((x) => `  ${x}`).join('\n') : '  (none listed: the console answers from home and private networks only)');
+    break;
+  }
+  case 'push-keys': {
+    const { PUSH_DIR, pushKeys } = await import('../server/admin/push.js');
+    const crypto = await import('node:crypto');
+    const what = argv[1] ?? 'status';
+    const save = (name, data) => {
+      fs.mkdirSync(PUSH_DIR, { recursive: true, mode: 0o700 });
+      fs.writeFileSync(path.join(PUSH_DIR, `${name}.new`), data, { mode: 0o600 });
+      fs.renameSync(path.join(PUSH_DIR, `${name}.new`), path.join(PUSH_DIR, name));
+    };
+    if (what === 'apns') {
+      const file = argv[2];
+      const keyId = opt('--key-id');
+      if (!file || !fs.existsSync(file)) fail('Give the .p8 file Apple made: push-keys apns <AuthKey_XXXXXXXXXX.p8> --key-id <id>');
+      const pem = fs.readFileSync(file, 'utf8');
+      try { crypto.createPrivateKey(pem); } catch { fail('That file isn’t a private key (use the .p8 file Apple made, unchanged).'); }
+      const id = keyId ?? /AuthKey_([A-Z0-9]{10})\.p8$/.exec(file)?.[1];
+      if (!/^[A-Z0-9]{10}$/.test(id ?? '')) fail('Give the key’s 10-character Key ID: --key-id <id> (it’s in the file name and in Apple’s Keys list).');
+      const meta = JSON.stringify({ keyId: id, teamId: need('--team', 'the Apple Team ID'), bundleId: need('--bundle', 'the app’s bundle ID'), production: !flag('--sandbox') }, null, 2);
+      save('apns.p8', pem);
+      save('apns.json', meta);
+      ok(`Apple push key ${id} saved (${PUSH_DIR}). You can delete the copy you gave here.`);
+    } else if (what === 'fcm') {
+      const file = argv[2];
+      if (!file || !fs.existsSync(file)) fail('Give the service account file from Firebase: push-keys fcm <file.json> (Project settings → Service accounts → Generate new private key)');
+      let sa;
+      try { sa = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { fail('That file isn’t JSON.'); }
+      if (sa.type !== 'service_account' || !sa.client_email || !sa.private_key || !sa.project_id) fail('That isn’t a Firebase service account file.');
+      try { crypto.createPrivateKey(sa.private_key); } catch { fail('The service account’s private key can’t be read.'); }
+      save('fcm.json', JSON.stringify({ type: sa.type, project_id: sa.project_id, client_email: sa.client_email, private_key: sa.private_key }));
+      ok(`Firebase key for ${sa.project_id} saved (${PUSH_DIR}). You can delete the copy you gave here.`);
+    } else if (what === 'remove') {
+      const which = argv[2];
+      if (which === 'apns') { fs.rmSync(path.join(PUSH_DIR, 'apns.p8'), { force: true }); fs.rmSync(path.join(PUSH_DIR, 'apns.json'), { force: true }); }
+      else if (which === 'fcm') fs.rmSync(path.join(PUSH_DIR, 'fcm.json'), { force: true });
+      else fail('push-keys remove apns | fcm');
+      ok(`Removed the ${which === 'apns' ? 'Apple' : 'Firebase'} push key.`);
+    }
+    const k = pushKeys();
+    console.log(`iPhone and iPad (Apple): ${k.apns ? `ready, key ${k.apns.keyId}, ${k.apns.production === false ? 'sandbox' : 'production'}` : 'no key'}`);
+    console.log(`Android (Firebase): ${k.fcm ? `ready, project ${k.fcm.projectId}` : 'no key'}`);
     break;
   }
   case 'dns-token': {

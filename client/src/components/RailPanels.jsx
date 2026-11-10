@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { device } from '../device.js';
 import Icon from './Icon.jsx';
 import { useDialog } from './Dialogs.jsx';
 import { pageLinkProps, pageTabItems } from '../openTab.js';
@@ -82,6 +83,7 @@ export function UtilityPanel({ tree, tagActions, onView, onSection, onOpenNote, 
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Close Utility" title="Close (Esc)"><Icon name="x" size={16} /></button>
       </div>
       <div className="rp-scroll">
+        {device.full && (<>
         <div className="rp-section-head">
           <h3>Templates</h3>
           <button type="button" className="link-btn" {...pageLinkProps({ view: 'templates' }, () => onView({ type: 'templates' }))} onContextMenu={(e) => dialog.contextMenu(e, pageTabItems({ view: 'templates' }))}>See all{tree.templates ? ` ${tree.templates}` : ''}</button>
@@ -92,6 +94,7 @@ export function UtilityPanel({ tree, tagActions, onView, onSection, onOpenNote, 
           </button>
         ))}
         {templates && !templates.length && <p className="rp-empty">No templates yet. Any note can become one (its ⋯ menu).</p>}
+        </>)}
         <button type="button" className="rp-row rp-link" onClick={() => { onClose(); onNewFromTemplate(); }}>
           <Icon name="plus" size={15} /><span className="rp-name">New note from template…</span>
         </button>
@@ -109,9 +112,11 @@ export function UtilityPanel({ tree, tagActions, onView, onSection, onOpenNote, 
         ))}
         {files && !files.length && <p className="rp-empty">Files you add to notes show up here.</p>}
 
+        {device.full && (
         <button type="button" className="rp-row rp-link" {...pageLinkProps({ section: 'media' }, () => onSection('media'))} onContextMenu={(e) => dialog.contextMenu(e, pageTabItems({ section: 'media' }))}>
           <Icon name="image" size={15} /><span className="rp-name">Media: church brand, slide pictures and art</span>
         </button>
+        )}
 
         <div className="rp-section-head">
           <h3>Tags</h3>
@@ -129,6 +134,7 @@ export function UtilityPanel({ tree, tagActions, onView, onSection, onOpenNote, 
         </div>
         <SharedWithMe words={[]} hit={() => true} folded={folded} setFolded={setFolded} onClose={onClose} />
       </div>
+      {/* 13.0: on a phone too, to bring back something deleted by mistake. */}
       <div className="rp-foot is-trash">
         <button type="button" className="rp-row" {...pageLinkProps({ view: 'trash' }, () => onView({ type: 'trash' }))} onContextMenu={(e) => dialog.contextMenu(e, pageTabItems({ view: 'trash' }))}>
           <Icon name="trash" size={15} /><span className="rp-name">Trash</span><span className="rp-count">{tree.trash || ''}</span>

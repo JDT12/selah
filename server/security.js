@@ -136,7 +136,8 @@ export function requestChecks(app) {
     }
 
     const clipper = CLIP_PATHS.has(url) && /^Bearer /.test(req.headers.authorization ?? '');
-    if (!SAFE_METHODS.has(req.method) && !clipper && url !== '/api/clip/pair' && !sameOrigin(req)) {
+    // The mobile app's built-in page posts to /api/mobile/resume from its own origin; the key it carries is the proof.
+    if (!SAFE_METHODS.has(req.method) && !clipper && url !== '/api/clip/pair' && url !== '/api/mobile/resume' && !sameOrigin(req)) {
       // Logged once a minute per address, so a flood can't push real entries out of the log.
       if (!h.originLogged) { h.originLogged = true; auth.logEvent('blocked-origin', req, { path: url, origin: req.headers.origin ?? req.headers['sec-fetch-site'] ?? null }); }
       return reply.code(403).send({ error: 'Request blocked: it didn’t come from Selah.' });
@@ -169,14 +170,14 @@ export function requestChecks(app) {
       return;
     }
     // The Edge clipper uses its own key, good only for adding clips (see capture.js).
-    if (PUBLIC_API.has(url) || (clipper && clipToken(req))) return;
+    if (PUBLIC_API.has(url) || url === '/api/mobile/resume' || (clipper && clipToken(req))) return;
     h.bad++;
     return reply.code(401).send({ error: 'Not signed in' });
   });
 
   app.addHook('onSend', async (req, reply, payload) => {
     const url = req.url.split('?')[0];
-    if (url === '/api/session' || url.startsWith('/api/login') || url.startsWith('/api/security')) reply.header('Cache-Control', 'no-store');
+    if (url === '/api/session' || url.startsWith('/api/login') || url.startsWith('/api/security') || url.startsWith('/api/mobile')) reply.header('Cache-Control', 'no-store');
     return payload;
   });
 }
@@ -184,7 +185,7 @@ export function requestChecks(app) {
 // ---------- routes ----------
 
 const setSessionCookie = (reply, { token, expires }) => reply.setCookie(auth.COOKIE, token, auth.cookieOptions(expires));
-const appKind = (v) => (['windows', 'installed'].includes(v) ? v : '');
+const appKind = (v) => (['windows', 'installed', 'mobile'].includes(v) ? v : '');
 
 function signedIn(req, reply, { twoFactor, app, method }) {
   setSessionCookie(reply, auth.createSession(req, { twoFactor, app }));
@@ -195,7 +196,7 @@ function signedIn(req, reply, { twoFactor, app, method }) {
 }
 
 // Selah Desktop has no sign-in, so nothing to sign in with, change or log (a PIN or Windows Hello lock is the app's).
-const SIGN_IN_ROUTES = /^\/api\/(login|logout|password|security|setup)(\/|$)/;
+const SIGN_IN_ROUTES = /^\/api\/(login|logout|password|security|setup|mobile)(\/|$)/;
 
 export default async function security(app) {
   if (config.edition === 'desktop') {
@@ -244,6 +245,26 @@ export default async function security(app) {
     reply.clearCookie(auth.COOKIE, { path: '/' });
     reply.clearCookie(auth.OLD_COOKIE, { path: '/' });
     return { ok: true };
+  });
+
+  // 13.0: the mobile app keeps its sign-in in the device's Keychain or Keystore, so losing the web view's cookie doesn't
+  // sign it out. Only sessions the app itself started can read their key; signing out or removing the device ends it.
+  app.get('/api/mobile/session-key', async (req) => {
+    if (req.session?.app !== 'mobile' || !req.sessionToken) throw httpError(403, 'Only the Selah app can do this.');
+    return { key: req.sessionToken };
+  });
+
+  app.addContentTypeParser('application/x-www-form-urlencoded', { parseAs: 'string' }, (req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body))));
+
+  /** The app's built-in page sends the saved key as a page-level form post, which is how the cookie can be set again. */
+  app.post('/api/mobile/resume', async (req, reply) => {
+    const token = String(req.body?.token ?? '');
+    const session = auth.sessionFor(token);
+    if (session?.app === 'mobile') {
+      auth.touchSession(session, req);
+      setSessionCookie(reply, { token, expires: new Date(session.expires_at) });
+    }
+    return reply.code(303).header('Location', '/').send();
   });
 
   /** Confirm it's you: password, and a code when two-step sign-in is on. Unlocks sensitive changes for 10 minutes. */

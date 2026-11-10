@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { device } from '../device.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { Menu, useDialog } from './Dialogs.jsx';
@@ -189,6 +190,28 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
     }
   };
 
+  // 13.0: every slide as a picture (PNG, 1920 × 1080) in a .zip, drawn as it shows when presenting.
+  const toPictures = async () => {
+    await flush();
+    setSaving('Drawing the slides…');
+    try {
+      const { exportImages } = await import('../slideImages.js');
+      const name = await exportImages({ deck, passages, title: source.title || 'Slides', onProgress: (i, n) => setSaving(`Drawing slide ${i} of ${n}…`) });
+      setSaving('');
+      dialog.toast(`Saved “${name}” to your downloads`);
+    } catch (e) {
+      setSaving('');
+      dialog.toast(`Couldn’t make the pictures: ${e.message}`, 'error');
+    }
+  };
+  const download = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    dialog.contextMenu({ clientX: r.left, clientY: r.bottom + 4, preventDefault() {}, stopPropagation() {} }, [
+      { label: 'PowerPoint (.pptx)', onClick: toPowerPoint },
+      { label: 'Pictures (.png, in a .zip)', onClick: toPictures },
+    ]);
+  };
+
   const look = deckLook(deck, brand);
   const anchorKnown = !s?.anchor || s.anchor === '^' || choices.some((c) => c.text === s.anchor);
   const favorite = bible.translations.find((t) => t.id === bible.tr);
@@ -265,11 +288,11 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
   const slidePanel = s ? (
     <div className="se-fields">
       <div className="se-row">
-        <label className="se-field se-type-field">Type
+        {device.full && <label className="se-field se-type-field">Type
           <select className="input" value={s.type} onChange={(e) => set(retype(s, e.target.value))}>
             {SLIDE_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
-        </label>
+        </label>}
         <span className="se-actions">
           <button type="button" className="icon-btn" disabled={i === 0} onClick={() => move(i, i - 1)} aria-label="Move up"><Icon name="arrowUp" size={15} /></button>
           <button type="button" className="icon-btn" disabled={i === slides.length - 1} onClick={() => move(i, i + 1)} aria-label="Move down"><Icon name="arrowDown" size={15} /></button>
@@ -324,6 +347,7 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
           <textarea className="input" rows={3} value={s.answer ?? ''} onChange={(e) => set({ answer: e.target.value })} />
         </label>
       )}
+      {device.full && (
       <label className="se-field">Comes up when I reach
         <select className="input" value={s.anchor ?? ''} onChange={(e) => set({ anchor: e.target.value })}>
           <option value="">Only when I press Next</option>
@@ -333,6 +357,7 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
         </select>
         <span className="muted se-hint">While you preach or teach, reaching this place in the note puts the slide up.</span>
       </label>
+      )}
       <label className="se-field">Notes for you
         <textarea className="input" rows={2} value={s.notes ?? ''} onChange={(e) => set({ notes: e.target.value })} placeholder="Shown on your screen while presenting, never on the slide" />
       </label>
@@ -452,9 +477,11 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
           </button>
           <div className="se-o-fields">
             <div className="se-o-head">
+              {device.full && (
               <select className="input se-o-type" value={x.type} onChange={(e) => setSlide(x.id, retype(x, e.target.value))} aria-label="Type">
                 {SLIDE_TYPES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
               </select>
+              )}
               {x.type === 'passage'
                 ? <input className="input se-o-title" value={x.ref ?? ''} onChange={(e) => setSlide(x.id, { ref: e.target.value })} placeholder="Passage, e.g. John 3:16-21" aria-label="Passage" />
                 : <input className="input se-o-title" value={x.title ?? ''} onChange={(e) => setSlide(x.id, { title: e.target.value })} placeholder={x.type === 'question' ? 'Question' : 'Title'} aria-label="Title" />}
@@ -496,8 +523,8 @@ export default function SlidesEditor({ noteId, kind, source, onPresent }) {
         </div>
         <span className="muted se-saving">{saving}</span>
         <span className="spacer" />
-        <button type="button" className="btn btn-small" onClick={toPowerPoint} title="Download the deck as a PowerPoint file (.pptx)"><Icon name="download" size={14} /> PowerPoint</button>
-        <button type="button" className="btn btn-small" onClick={projector} title="The audience’s view, for the projector or TV"><Icon name="monitor" size={14} /> Slides window</button>
+        {device.full && (<button type="button" className="btn btn-small" onClick={download} aria-haspopup="menu" title="Download the deck as PowerPoint or as pictures"><Icon name="download" size={14} /> Download</button>)}
+        {device.full && (<button type="button" className="btn btn-small" onClick={projector} title="The audience’s view, for the projector or TV"><Icon name="monitor" size={14} /> Slides window</button>)}
         {onPresent && <button type="button" className="btn btn-small btn-primary" onClick={present}><Icon name="play" size={14} /> Present</button>}
       </div>
       {(rec.fresh.length > 0 || flagged > 0) && (

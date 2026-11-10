@@ -4,6 +4,18 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '13.0.0',
+    date: '2026-11-10',
+    title: 'Selah on your phone and tablet',
+    items: [
+      'The Selah app for iPhone, iPad and Android opens your Selah, and it’s always up to date with it.',
+      'No connection? The app keeps your recent work and reading plans on the device to read until you’re back online.',
+      'Lock the app with Face ID, a fingerprint or your passcode: Settings → General.',
+      'Plan → Attendance is cleaner: names in a compact grid with a filter box, and Manage people for the roster.',
+      'Attendance names now sort by last name, so couples and families sit together.',
+    ],
+  },
+  {
     version: '12.3.0',
     date: '2026-11-07',
     title: 'Better slides on the iPad',

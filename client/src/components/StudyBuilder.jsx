@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { needsFullApp } from '../device.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { biblePassage } from '../esv.js';
@@ -589,6 +590,7 @@ const STUDY_STARTERS = { ggw: (passage) => studyHtml(emptyStudy(passage), { pass
  * builder closes (null when it couldn't be made).
  */
 export async function newStudy(dialog, passage = '', extra = {}, { studyId = null, method: forced = null } = {}) {
+  if (needsFullApp(dialog)) return null;
   try {
     const method = forced ?? await chooseMethod(dialog, 'study', { studyId });
     if (method == null) return null;

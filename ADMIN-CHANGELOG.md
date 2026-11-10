@@ -4,6 +4,18 @@ The admin console's own history, newest first. It's versioned apart from Selah (
 run: a console release doesn't need a Selah release, and the other way round. Its version is in
 `server/admin/version.js` and shows at the foot of the console's menu.
 
+## [Unreleased]
+
+## [3.4.0] - 2026-11-10
+
+Push notifications to the Selah phone and tablet apps.
+
+### Added
+- **Push to the Selah apps** (`server/admin/push.js`): the console sends each tenant's queued pushes (reminders, a quiet "check for changes", sharing notes) through Apple (APNs, HTTP/2 with a signed token) and Google (Firebase Cloud Messaging v1), with keys only the host has: `npm run admin -- push-keys apns <AuthKey.p8> --key-id <id>` and `push-keys fcm <service-account.json>` copy them to `<cloud root>/push` (readable only by the console's user; picked up without a restart; `push-keys` alone shows what's set). It keeps one waiting request per tenant, as sharing does, tells each tenant which platforms work, and hands back tokens Apple or Google say are gone. Tenants on releases before 13.0 are asked less and less often.
+
+### Fixed
+- Pruning old releases now also removes their Docker images (about 1 GB each), which were being left behind for good.
+
 ## [3.3.0] - 2026-11-06
 
 Shipping a beta takes one command, and the demo can be tested without signing in.

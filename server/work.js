@@ -35,12 +35,13 @@ export function allWork() {
       word: builder === 'word' ? (d.word?.english || null) : null,
       step: step(builder, d.step), steps: BUILDER_STEPS[builder], created_at: s.created_at, updated_at: s.updated_at });
   }
-  const sermons = db.prepare(`SELECT s.note_id, s.passage, s.data, s.status, s.created_at, n.title, n.updated_at, st.title AS series
+  const sermons = db.prepare(`SELECT s.note_id, s.passage, s.data, s.status, s.created_at, n.title, n.updated_at, st.title AS series,
+      (SELECT i.date FROM study_items i WHERE i.note_id = s.note_id AND i.kind = 'session' ORDER BY i.id LIMIT 1) AS date
     FROM sermons s JOIN notes n ON n.id = s.note_id AND n.deleted_at IS NULL AND n.is_template = 0 LEFT JOIN studies st ON st.id = s.study_id`).all();
   for (const s of sermons) {
     const d = parseData(s.data);
     out.push({ key: `n${s.note_id}`, kind: 'sermon', tab: 'teach', note_id: s.note_id, builder: 'sermon', title: s.title, passage: s.passage ?? '',
-      series: s.series ?? null, step: step('sermon', d.step), steps: BUILDER_STEPS.sermon, created_at: s.created_at, updated_at: s.updated_at });
+      series: s.series ?? null, date: s.date ?? null, step: step('sermon', d.step), steps: BUILDER_STEPS.sermon, created_at: s.created_at, updated_at: s.updated_at });
   }
   // Lessons: a teaching session's note, a note filed as a study's lesson, or a note that follows a lesson method.
   const lessons = db.prepare(`SELECT n.id, n.title, n.created_at, n.updated_at,

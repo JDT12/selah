@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { device } from '../device.js';
 import Icon from '../components/Icon.jsx';
 import Ring from '../components/Ring.jsx';
 import { Menu, useDialog } from '../components/Dialogs.jsx';
@@ -256,7 +257,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
         </button>
       )}
       {!(studyFirst(item) && !hasNote(item)) && (s.status !== 'archived' || (item.note_id && item.note_title !== null)) && (
-        <button type="button" className="btn btn-small study-item-note" onClick={() => openItemNote(item)}>
+        <button type="button" className="btn btn-small study-item-note" data-read={hasNote(item) ? '' : undefined} onClick={() => openItemNote(item)}>
           <Icon name={preaching && item.kind === 'session' ? 'lectern' : item.bible_study ? 'bible' : 'note'} size={13} /> {item.note_id && item.note_title !== null
             ? (item.bible_study ? 'Study' : item.kind === 'session' ? (preaching ? 'Sermon' : 'Lesson') : 'Notes')
             : (item.kind === 'session' ? (preaching ? 'Build sermon' : 'Write lesson') : 'Add notes')}
@@ -265,7 +266,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
       {preaching && item.kind === 'session' && hasNote(item) && (
         <>
           <button type="button" className="icon-btn" onClick={() => build(item)} title="Sermon builder" aria-label="Sermon builder"><Icon name="steps" size={15} /></button>
-          <button type="button" className="icon-btn" onClick={() => preachNote(dialog, item.note_id).then(changed)} title="Preach" aria-label="Preach"><Icon name="play" size={15} /></button>
+          <button type="button" className="icon-btn" onClick={() => preachNote(dialog, item.note_id).then(changed)} title="Preach" aria-label="Preach" data-read={device.tablet ? '' : undefined}><Icon name="play" size={15} /></button>
         </>
       )}
       {item.bible_study && hasNote(item) && (
@@ -275,7 +276,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
         <button type="button" className="icon-btn" onClick={() => buildLesson(item)} title="Lesson builder" aria-label="Lesson builder"><Icon name="steps" size={15} /></button>
       )}
       {!preaching && item.kind === 'session' && item.note_id && item.note_title !== null && (
-        <button type="button" className="icon-btn" onClick={() => teachNote(dialog, item.note_id).then(changed)} title="Teach the lesson" aria-label="Teach the lesson"><Icon name="play" size={15} /></button>
+        <button type="button" className="icon-btn" onClick={() => teachNote(dialog, item.note_id).then(changed)} title="Teach the lesson" aria-label="Teach the lesson" data-read={device.tablet ? '' : undefined}><Icon name="play" size={15} /></button>
       )}
       <Menu align="right" trigger={({ toggle: t }) => <button type="button" className="icon-btn" onClick={t} aria-label="More"><Icon name="more" size={16} /></button>} items={itemMenu(item)} />
     </li>
@@ -331,7 +332,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
             <p className="muted study-empty">
               {s.kind === 'class' ? 'Add assignments below, or connect the class calendar on the right.' : 'Nothing scheduled yet. '}
               {s.kind !== 'class' && <button type="button" className="link-btn" onClick={plan}>{{ self: 'Plan the reading', teaching: 'Plan a series', writing: 'Plan the writing', preaching: 'Plan the series' }[s.kind]}</button>}
-              {s.kind !== 'class' && ' or add items one at a time below.'}
+              {device.full && s.kind !== 'class' && ' or add items one at a time below.'}
             </p>
           )}
           {groups.weeks.map(([week, items]) => {

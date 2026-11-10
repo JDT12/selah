@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { canOpenSection, device } from '../device.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { parse } from '../../../shared/scripture.js';
@@ -57,17 +58,17 @@ export default function CommandPalette({ tree, go, close }) {
       { label: 'New note from template…', icon: 'copy', run: go.newFromTemplate },
       { label: 'New task…', icon: 'todo', run: go.newTask },
       { label: 'New event…', icon: 'calendar', run: go.newEvent },
-      { label: 'New sermon…', icon: 'lectern', run: go.newSermon },
-      { label: 'New study…', icon: 'bible', run: go.newStudy },
-      { label: 'New course…', icon: 'present', run: go.newCourse },
+      device.full && { label: 'New sermon…', icon: 'lectern', run: go.newSermon },
+      device.full && { label: 'New study…', icon: 'bible', run: go.newStudy },
+      device.full && { label: 'New course…', icon: 'present', run: go.newCourse },
       { label: 'Record a voice memo', icon: 'mic', run: go.voiceMemo },
       { label: 'Settings', icon: 'settings', run: go.settings },
-      { label: 'Customize sidebar…', icon: 'layout', run: go.customizeSidebar },
+      device.full && { label: 'Customize sidebar…', icon: 'layout', run: go.customizeSidebar },
       { label: 'Theme: light', icon: 'sun', run: () => go.theme('light') },
       { label: 'Theme: dark', icon: 'sun', run: () => go.theme('dark') },
       { label: 'Theme: match the system', icon: 'sun', run: () => go.theme('system') },
-    ];
-    const pages = SIDEBAR_PAGES.filter((p) => p.key !== 'shortcuts' && p.key !== 'utility' && (p.key !== 'wordpress' || tree.wordpress))
+    ].filter(Boolean);
+    const pages = SIDEBAR_PAGES.filter((p) => canOpenSection(p.key) && p.key !== 'shortcuts' && p.key !== 'utility' && (p.key !== 'wordpress' || tree.wordpress))
       .map((p) => ({
         label: p.key === 'wordpress' ? tree.wordpress : p.label, icon: p.icon, run: () => go.page(p.key),
       }))

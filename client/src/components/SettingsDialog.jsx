@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import { canNotify, isDesktopApp, remindersOn, setReminders, testNotification } from '../desktop.js';
-import { api } from '../api.js';
+import { device } from '../device.js';
+import { allowExactReminders, appReminderStatus, canNotify, isDesktopApp, remindersOn, scheduleAppReminders, setReminders, testNotification } from '../desktop.js';
+import { canLock, changeServer, isMobileApp, offlineWorkStatus, readLock, saveForOffline, setLock } from '../mobile.js';
+import { api, formatSize } from '../api.js';
 import { version } from '../../../package.json';
 import { useDialog } from './Dialogs.jsx';
 import AccountPane from './AccountPane.jsx';
@@ -63,7 +65,8 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
   // The last tab you used opens next time.
   const [tab, setTab] = useStoredState('noteapp.settingsTab', 'general');
   // Selah Desktop has no sign-in, so no Account or Security tabs (its lock is under General → App).
-  const tabs = isDesktopEdition() ? TABS.filter((t) => t.key !== 'account' && t.key !== 'security') : TABS;
+  const tabs = isDesktopEdition() ? TABS.filter((t) => t.key !== 'account' && t.key !== 'security')
+    : device.full ? TABS : TABS.filter((t) => t.key !== 'connections' && t.key !== 'data');
   const current = tabs.some((t) => t.key === tab) ? tab : 'general';
   // The dialog is rendered once when opened, so the `theme` prop never updates;
   // track the choice locally so the selector moves as soon as it's clicked.
@@ -131,6 +134,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
         </div>
         <NoteFontRow />
 
+        {device.full && (<>
         <h3>Rail</h3>
         <div className="about-row">
           <span className="muted">Choose which pages the rail shows and their order. Pages you take off stay a right-click on the rail (or Ctrl+K) away.</span>
@@ -145,13 +149,29 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
 
         <h3>Connected notes</h3>
         <ConnectionsRow />
+        </>)}
 
         <h3>Notifications</h3>
         <NotificationsRow />
 
         <h3>App</h3>
-        {!isDesktopApp() && <InstallAppRow cert={cert} />}
-        {window.selahDesktop?.kind === 'electron' ? <DesktopAppRow /> : <WindowsAppRow />}
+        {isMobileApp() ? (
+          <>
+            <div className="about-row">
+              <span className="muted">This device opens {location.host}.</span>
+              <button type="button" className="btn btn-small" onClick={changeServer}>Use a different Selah</button>
+            </div>
+            <MobileLockRow />
+            <OfflineWorkRow />
+            <StorageRow />
+            <div className="about-row"><span className="muted">Connections, exports, imports and backups are on the web and in Selah Desktop.</span></div>
+          </>
+        ) : (
+          <>
+            {!isDesktopApp() && <InstallAppRow cert={cert} />}
+            {window.selahDesktop?.kind === 'electron' ? <DesktopAppRow /> : <WindowsAppRow />}
+          </>
+        )}
       </>
     ),
     connections: (
@@ -195,6 +215,9 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
             </div>
           </>
         )}
+
+        <h3>Storage</h3>
+        <StorageRow />
 
         <h3>Download a backup</h3>
         <BackupDownloadRow />
@@ -243,10 +266,12 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
           <span className="muted">How to use Selah, page by page.</span>
           <button className="btn btn-small" onClick={() => openGuide()}><Icon name="book" size={14} /> User guide</button>
         </div>
+        {device.full && (
         <div className="about-row">
           <span className="muted">A two-minute tour of what’s where: the rail, Home and Desk, tabs, the passage page, preaching and slides.</span>
           <button className="btn btn-small" onClick={() => { close(); startTour(); }}><Icon name="flag" size={14} /> Take the tour</button>
         </div>
+        )}
         <SampleRow />
         <div className="about-row">
           <span className="muted">What’s new in Selah, update by update.</span>
@@ -365,9 +390,73 @@ function ConnectionsRow() {
 }
 
 /** Reminders on this device; each event and task chooses its own (Remind me). */
+/** The app's lock (13.0): hidden on a device with no Face ID, fingerprint or passcode, and in an older app. */
+/** How much is ready to preach or teach with no connection on this device, and a way to save right now. */
+function OfflineWorkRow() {
+  const dialog = useDialog();
+  const [status, setStatus] = useState(undefined);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { offlineWorkStatus().then(setStatus).catch(() => setStatus(null)); }, []);
+  if (status === undefined) return null;
+  const save = async () => {
+    setBusy(true);
+    try {
+      await saveForOffline(new Date().toLocaleDateString('en-CA'));
+      setStatus(await offlineWorkStatus());
+      dialog.toast('Saved on this device');
+    } catch { dialog.toast('Couldn’t save everything. Check your connection and try again.', 'error'); }
+    setBusy(false);
+  };
+  const when = status?.savedAt ? new Date(status.savedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  return (
+    <div className="about-row">
+      <span className="muted">{status ? `${status.count} ${status.count === 1 ? 'sermon or lesson' : 'sermons and lessons'} ready with no connection. Saved ${when}.` : 'Sermons and lessons on your calendar, and your most recent, are saved here for when there’s no connection.'}</span>
+      <button type="button" className="btn btn-small" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save now'}</button>
+    </div>
+  );
+}
+
+/** Space used: your Selah's share of its quota on a hosted server, or the disk Selah keeps its notes on. */
+function StorageRow() {
+  const [s, setS] = useState(null);
+  useEffect(() => { api.storage().then(setS).catch(() => setS(null)); }, []);
+  if (!s?.used) return null;
+  const pct = s.capacity ? Math.round((s.used / s.capacity) * 100) : null;
+  return (
+    <div className="about-row">
+      <span className="muted">{s.capacity ? `${formatSize(s.used)} of ${formatSize(s.capacity)} used (${pct}%)` : `${formatSize(s.used)} used`}{s.attachments != null ? ` · notes ${formatSize(s.database ?? 0)}, attachments ${formatSize(s.attachments)}` : ''}</span>
+      {s.capacity ? <span className={`storage-meter ${pct >= 90 ? 'is-warn' : ''}`} aria-hidden="true"><i style={{ width: `${Math.min(100, pct)}%` }} /></span> : null}
+    </div>
+  );
+}
+
+function MobileLockRow() {
+  const dialog = useDialog();
+  const [state, setState] = useState(null);
+  useEffect(() => {
+    let live = true;
+    (async () => { if (await canLock()) { const on = await readLock(); if (live) setState(on); } })();
+    return () => { live = false; };
+  }, []);
+  if (state === null) return null;
+  const toggle = async () => {
+    try { await setLock(!state); setState(!state); } catch { dialog.toast('The lock wasn’t changed.', 'error'); }
+  };
+  return (
+    <div className="about-row">
+      <span className="muted">Ask for Face ID, a fingerprint or this device’s passcode when Selah opens, and after 5 minutes away.</span>
+      <button type="button" className="btn btn-small" onClick={toggle}>{state ? 'Turn off' : 'Turn on'}</button>
+    </div>
+  );
+}
+
 function NotificationsRow() {
   const dialog = useDialog();
   const [on, setOn] = useState(remindersOn());
+  // 13.0: in the phone and tablet apps, what's scheduled here and whether Android lets it come on time.
+  const [status, setStatus] = useState(null);
+  const refresh = async () => { await scheduleAppReminders().catch(() => {}); setStatus(await appReminderStatus().catch(() => null)); };
+  useEffect(() => { if (on) refresh(); else setStatus(null); }, [on]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!canNotify()) return <div className="about-row"><span className="muted">This browser can't show notifications.</span></div>;
   const toggle = async () => {
     const next = await setReminders(!on);
@@ -377,17 +466,24 @@ function NotificationsRow() {
   };
   const test = async () => {
     const r = await testNotification();
-    const where = { windows: 'as a Windows notification', 'service-worker': 'by the browser', browser: 'by the browser' }[r.how];
+    const where = { windows: 'as a Windows notification', 'service-worker': 'by the browser', browser: 'by the browser', app: 'by this device' }[r.how];
     if (r.ok) dialog.toast(`Test sent ${where}. If nothing appeared, check that notifications for Selah (and Do not disturb) are on in your device's settings.`, 'info', 9000);
     else dialog.toast(`The test couldn't be sent: ${r.error}`, 'error', 9000);
   };
   return (
     <div className="about-row">
-      <span className="muted">Reminders on this device for events and tasks. Each one has its own Remind me choices (usually 15 minutes before an event, and at a task's time). Selah needs to be open (in the Windows app, the tray is enough).</span>
+      <span className="muted">Reminders on this device for events and tasks. Each one has its own Remind me choices (usually 15 minutes before an event, and at a task's time).{isMobileApp() ? ' They come even when the app is closed.' : ' Selah needs to be open (in the Windows app, the tray is enough).'}</span>
       <span className="actions-right">
         {on && <button className="btn btn-small" onClick={test}>Send a test</button>}
         <button className="btn btn-small" onClick={toggle}>{on ? 'Turn off' : 'Turn on'}</button>
       </span>
+      {on && status && (
+        <span className="muted notify-status">
+          {status.count ? `${status.count} reminder${status.count === 1 ? '' : 's'} scheduled on this device for the next week. Next: ${status.next.toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}.` : 'Nothing scheduled for the next week.'}
+          {' '}Changes made on another device reach this one when Selah next opens here.
+          {status.exact !== 'granted' && <> <strong>Reminders may come a few minutes late:</strong> <button type="button" className="link-btn" onClick={allowExactReminders}>allow on-time reminders</button> (Android: Alarms &amp; reminders).</>}
+        </span>
+      )}
     </div>
   );
 }

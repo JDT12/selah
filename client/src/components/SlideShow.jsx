@@ -3,6 +3,8 @@ import Icon from './Icon.jsx';
 import { useDialog } from './Dialogs.jsx';
 import { RemoteDialog } from './RemotePage.jsx';
 import { isDesktopEdition } from '../mode.js';
+import { isMobileApp } from '../mobile.js';
+import { useTvScreen } from '../tvScreen.js';
 import { anchorElements, findAnchor, md } from '../slides.js';
 import { SlideView, canPickScreen, openSlidesWindow, usePassages, useSlideControl } from './SlideView.jsx';
 
@@ -37,6 +39,17 @@ function useKeys(ctl, { onEscape, enabled = true } = {}) {
 /** The window buttons: the slides window, and (where the browser can tell) the slides window on the other screen. */
 function WindowButtons({ noteId, linked, compact = false }) {
   const dialog = useDialog();
+  const tv = useTvScreen(noteId);
+  // 13.0: the app has no second window to open; on an iPad the slides go to a TV or projector instead.
+  if (isMobileApp()) {
+    if (!tv.available) return null;
+    return (
+      <button type="button" className={`ss-btn ${tv.connected && tv.showing ? 'is-on' : ''}`} onClick={tv.toggle} disabled={!tv.connected}
+        title={tv.connected ? (tv.showing ? 'The TV shows the slides. Tap to mirror the iPad instead.' : 'The TV mirrors the iPad. Tap to show just the slides.') : 'Connect a TV or projector (HDMI or AirPlay Screen Mirroring) and the slides go to it'}>
+        <Icon name="monitor" size={15} /> {!tv.connected ? 'No TV connected' : tv.showing ? 'Slides on the TV' : 'Mirroring the iPad'}
+      </button>
+    );
+  }
   return (
     <>
       {/* Selah Desktop's own library is only on this PC, so a phone can't reach it. */}

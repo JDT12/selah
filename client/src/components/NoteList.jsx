@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { device } from '../device.js';
 import Icon from './Icon.jsx';
 import { Menu, useDialog } from './Dialogs.jsx';
 import { api, formatDate } from '../api.js';
@@ -146,7 +147,7 @@ export default function NoteList({
         <div className="list-sub">
           <span>{notes.length} note{notes.length === 1 ? '' : 's'}</span>
           {isTrash ? (
-            notes.length > 0 && <button className="btn btn-small btn-danger-text" onClick={onEmptyTrash}>Empty trash</button>
+            device.full && notes.length > 0 && <button className="btn btn-small btn-danger-text" onClick={onEmptyTrash}>Empty trash</button>
           ) : (
             <label className="sort-select">
               <Icon name="sort" size={13} />
@@ -168,7 +169,7 @@ export default function NoteList({
           {checked.size > 0 && isTrash && (
             <>
               <button className="btn btn-small" onClick={bulk.restore}>Restore</button>
-              <button className="btn btn-small btn-danger-text" onClick={bulk.deleteForever}>Delete…</button>
+              {device.full && (<button className="btn btn-small btn-danger-text" onClick={bulk.deleteForever}>Delete…</button>)}
             </>
           )}
           {checked.size > 0 && !isTrash && !isTemplates && (

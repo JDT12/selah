@@ -11,6 +11,7 @@ import { matchCode, newSecret, otpauthUri } from './totp.js';
 import { checkIdentity, identity, saveIdentity } from './account.js';
 import { nightlySlot, offsiteConfigured, offsiteState, runOffsite } from './offsite.js';
 import { sharingControl, sharingHealth } from './sharing.js';
+import { pushControl } from './push.js';
 
 /**
  * A Selah that belongs to one invited person on a shared host (NOTEAPP_MODE=tenant), and the account features every
@@ -193,6 +194,8 @@ async function controlServer(log, mainApp) {
 
   // Sharing between tenants (8.0): the console reads the outbox and delivers messages here (server/sharing.js).
   sharingControl(app);
+  // Push to the apps (13.0): the console sends what's queued with the host's keys (server/push.js).
+  pushControl(app);
 
   app.post('/control/sign-out-all', async () => {
     const n = db.prepare('DELETE FROM sessions').run().changes;
@@ -329,7 +332,7 @@ export default async function tenant(app) {
       if (skip) { saveTotp(null); setSetting('recovery_codes', '[]'); }
       else saveTotp({ secret, since: Date.now(), lastStep: step });
       const codes = skip ? null : freshRecoveryCodes();
-      const s = auth.createSession(req, { twoFactor: !skip, app: ['windows', 'installed'].includes(req.body?.app) ? req.body.app : '' });
+      const s = auth.createSession(req, { twoFactor: !skip, app: ['windows', 'installed', 'mobile'].includes(req.body?.app) ? req.body.app : '' });
       reply.setCookie(auth.COOKIE, s.token, auth.cookieOptions(s.expires));
       auth.logEvent(l.kind === 'reset' ? 'setup-reset' : 'setup-done', req, skip ? { twoStep: false } : null);
       return { codes };

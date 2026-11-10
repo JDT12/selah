@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DeviceReadOnly from './components/DeviceReadOnly.jsx';
+import { canOpenSection, device } from './device.js';
 import { startLive, stopLive } from './live.js';
-import { isDesktopApp, notify, startReminders } from './desktop.js';
+import { forgetPush, isDesktopApp, notify, startReminders } from './desktop.js';
+import { forgetDevice, listenForQuickActions, listenForShares } from './mobile.js';
+import { canQueue, flushCaptureQueue, isOffline, queueCapture, saveCapture } from './captureSave.js';
+import MobileOffline from './components/MobileOffline.jsx';
 import { api, setConfirmIdentity } from './api.js';
 import { useStoredState } from './useStoredState.js';
 import { focusOn, toggleFocus, useFocusMode } from './focus.js';
@@ -57,6 +62,8 @@ import BackupRestoreDialog from './components/BackupRestoreDialog.jsx';
 import { MergeDialog } from './components/NoteToolsDialogs.jsx';
 import { ClipperDialog } from './components/ClipperSettings.jsx';
 import Tour from './components/Tour.jsx';
+import RemotePage from './components/RemotePage.jsx';
+import { OPEN_FULL_KEY } from './editor/Drawing.jsx';
 
 function useTheme() {
   const [theme, setTheme] = useStoredState('noteapp.theme', 'system');
@@ -103,8 +110,11 @@ export default function App() {
 
   if (auth === 'loading') return null;
   if (auth === 'login') return <Login passwordSet={passwordSet} signInName={signInName} cert={cert} onDone={(r) => { setSignInNotice(r); setAuth('ok'); }} />;
-  return <Workspace themeState={themeState} cert={cert} signInNotice={signInNotice}
-    onLogout={async () => { await api.logout().catch(() => {}); setAuth('login'); }} />;
+  return <>
+    <MobileOffline />
+    <Workspace themeState={themeState} cert={cert} signInNotice={signInNotice}
+      onLogout={async () => { await forgetPush(); await api.logout().catch(() => {}); await forgetDevice(); setAuth('login'); }} />
+  </>;
 }
 
 const SECTIONS = ['dashboard', 'inbox', 'calendar', 'tasks', 'attendance', 'notebooks', 'tags', 'dailywalk', 'plans', 'prayer', 'scripture', 'wordpress', 'attachments', 'media', 'desk', 'sermons', 'shared', 'notes', 'build'];
@@ -344,7 +354,8 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
     // 10.1: notebooks and shelves are no longer views of their own; they open My notes.
     const gone = view.type === 'notebook' || view.type === 'stack'
       || (view.type === 'tag' && !tree.tags.some((t) => t.id === view.id));
-    if (gone) setView({ type: 'all' });
+    const offDevice = !device.full && view.type === 'templates';
+    if (gone || offDevice) setView({ type: 'all' });
   }, [tree, view, setView]);
 
   // Select the first note when nothing is selected (desktop).
@@ -386,10 +397,19 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
   const [scriptureQuery, setScriptureQuery] = useState(null);
   const openScripture = (q) => { setScriptureQuery(q ?? null); setSection('scripture'); };
 
-  // A note opened over the current page (from a study) instead of leaving it. Resolves when it closes.
+  // A note opened from a study without leaving it. 13.0: in a tab of its own, and closing the tab comes back here; a
+  // phone has no tabs, so there it still opens over the page. Resolves when it closes (at once for a tab: the page
+  // loads itself again when you come back).
   const [peek, setPeek] = useState(null); // { id, heading, n }
   const peekDone = useRef(null);
+  const openNoteTabRef = useRef(null);
   const peekNote = useCallback((id, heading = null) => new Promise((done) => {
+    if (window.innerWidth > 800) {
+      openNoteTabRef.current(id);
+      if (heading) setHeadingTarget({ id, heading, n: Date.now() });
+      done();
+      return;
+    }
     peekDone.current?.();
     peekDone.current = done;
     setPeek({ id, heading, n: Date.now() });
@@ -609,9 +629,9 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
     if (view.type === 'trash') {
       return [
         { label: `Restore ${c}`, onClick: bulk.restore },
-        'sep',
-        { label: `Delete ${c} forever…`, danger: true, onClick: bulk.deleteForever },
-      ];
+        device.full && 'sep',
+        device.full && { label: `Delete ${c} forever…`, danger: true, onClick: bulk.deleteForever },
+      ].filter(Boolean);
     }
     if (view.type === 'templates') {
       return [
@@ -908,7 +928,7 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
     const uid = newUid();
     const t = d.kind === 'page'
       ? { uid, kind: 'page', section: d.view ? 'notes' : d.section, view: d.view, type: 'page', title: d.title ?? (d.view ? VIEW_NAMES[d.view] : PAGE_NAMES[d.section]) ?? 'Page', pinned: !!d.pinned }
-      : { uid, kind: d.kind === 'study' ? 'study' : 'note', id: d.id, course: !!d.course, type: d.kind === 'study' ? (d.course ? 'course' : 'desk') : 'note', title: d.title ?? '', pinned: !!d.pinned };
+      : { uid, kind: d.kind === 'study' ? 'study' : 'note', id: d.id, course: !!d.course, type: d.kind === 'study' ? (d.course ? 'course' : 'desk') : 'note', title: d.title ?? '', pinned: !!d.pinned, ...(d.from ? { from: d.from } : {}) };
     setTabs((l) => (t.pinned ? [...l.filter((x) => x.pinned), t, ...l.filter((x) => !x.pinned)] : [...l, t]));
     expect.current = { uid, at: Date.now() };
     setActiveUid(uid);
@@ -916,6 +936,11 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
   };
   const openInNewTabRef = useRef(openInNewTab);
   openInNewTabRef.current = openInNewTab;
+  // A note already in a tab comes forward instead of opening twice.
+  openNoteTabRef.current = (id) => {
+    const open = tabs.find((t) => t.kind === 'note' && t.id === id);
+    if (open) pickTab(open); else openInNewTab({ kind: 'note', id, from: activeUid });
+  };
   useEffect(() => {
     const on = (e) => { if (e.detail?.id || e.detail?.kind === 'page') openInNewTabRef.current(e.detail); };
     window.addEventListener('noteapp:open-tab', on);
@@ -930,8 +955,11 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
     if (!gone.some((x) => x.uid === activeUid)) return;
     const at = tabs.findIndex((x) => x.uid === activeUid);
     // A builder goes back to the main tab (where you opened it from); another tab gives way to the one on its left.
-    const left = tabs[at]?.kind === 'builder' ? null : tabs.slice(0, at).reverse().find((x) => rest.includes(x));
-    if (left) pickTab(left); else pickMain();
+    // 13.0: a note opened from a study or list comes back to where it was opened.
+    const closing = tabs[at];
+    const opener = closing?.from && closing.from !== 'main' ? rest.find((x) => x.uid === closing.from) : null;
+    const left = closing?.kind === 'builder' || closing?.from ? null : tabs.slice(0, at).reverse().find((x) => rest.includes(x) && (device.full || x.kind !== 'builder'));
+    if (opener || left) pickTab(opener ?? left); else pickMain();
   };
   const closeTab = (t) => closeTabs((x) => x.uid === t.uid);
   const setTabPinned = (t, pinned) => setTabs((list) => {
@@ -1038,17 +1066,113 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
     return () => window.removeEventListener('noteapp:live', on);
   }, [dialog]);
 
+  // 13.0: however you got here (a link, a restored tab, Ctrl+K), a phone or tablet reads the note instead of a builder
+  // and doesn't stay on a page it leaves out.
+  useEffect(() => {
+    if (section === 'build' && buildOpen && !device.full) {
+      const { id } = buildOpen;
+      setBuildOpen(null);
+      setActiveUid('main');
+      openNoteRef.current(id);
+    } else if (!canOpenSection(section)) setSection('dashboard');
+  }, [section, buildOpen, setSection]);
+
+  // 13.0: the phone remote, in the phone app (More → Remote), and offered when Preach or Teach starts elsewhere.
+  const [remoteOpen, setRemoteOpen] = useState(false);
+  const offered = useRef(null);
+  useEffect(() => {
+    const open = () => setRemoteOpen(true);
+    window.addEventListener('noteapp:open-remote', open);
+    if (!device.phone) return () => window.removeEventListener('noteapp:open-remote', open);
+    const onSlides = (e) => {
+      const m = e.detail;
+      if (m?.slides !== 'state' || !m.live || offered.current === m.live.note || document.querySelector('.remote, .preach')) return;
+      offered.current = m.live.note;
+      dialog.toast(`${m.live.mode === 'teach' ? 'Teaching' : 'Preaching'} “${m.live.title}” on another screen`, 'info', 10000, { label: 'Open the remote', onClick: open });
+    };
+    window.addEventListener('noteapp:slides', onSlides);
+    return () => { window.removeEventListener('noteapp:open-remote', open); window.removeEventListener('noteapp:slides', onSlides); };
+  }, [dialog]);
+
+  // 13.0: a handwritten note: a page of lined (or Cornell) paper that opens full screen, ready for the pen.
+  useEffect(() => {
+    const make = async (e) => {
+      const paper = e.detail?.paper === 'cornell' ? 'cornell' : 'lined';
+      const nb = tree?.myNotes ?? tree?.notebooks?.[0]?.id;
+      if (!nb) return;
+      try {
+        const day = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        const { id } = await api.createNoteWith(nb, { title: `${paper === 'cornell' ? 'Cornell notes' : 'Handwritten note'}, ${day}`, html: `<div data-drawing="" data-paper="${paper}" data-height="1400" data-strokes="[]"></div><p></p>` });
+        try { sessionStorage.setItem(OPEN_FULL_KEY, String(Date.now())); } catch { /* opens in the note instead */ }
+        await refreshNotes();
+        refreshTree();
+        openNoteRef.current(id);
+      } catch (err) { dialog.toast(err.message, 'error'); }
+    };
+    window.addEventListener('noteapp:new-handwritten', make);
+    return () => window.removeEventListener('noteapp:new-handwritten', make);
+  }, [tree?.myNotes, dialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 13.0: Android's back button goes back inside Selah (a dialog, the note list, the page before) and leaves the app
+  // only from Home. Without the App plugin (an older app) Android does what it always did.
+  const backState = useRef(null);
+  backState.current = { section, pane, peek, remoteOpen };
+  useEffect(() => {
+    const app = window.Capacitor?.isNativePlatform?.() && window.Capacitor.getPlatform?.() === 'android' ? window.Capacitor.Plugins?.App : null;
+    if (!app) return undefined;
+    const escape = () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    const back = () => {
+      const st = backState.current;
+      if (st.remoteOpen) { setRemoteOpen(false); return; }
+      if (document.body.classList.contains('has-full-drawing') || document.querySelector('.modal-backdrop, .context-menu, .menu-popover, .sheet-backdrop')) { escape(); return; }
+      if (st.peek) { closePeek(); return; }
+      if (st.section === 'notes' && st.pane === 'editor' && window.innerWidth <= 800) { setPane('list'); return; }
+      const h = navHistory.current;
+      if (h.at > 0) { stepRef.current(-1); return; }
+      if (st.section !== 'dashboard') { setSection('dashboard'); return; }
+      Promise.resolve(app.exitApp()).catch(() => {});
+    };
+    let handle = null;
+    Promise.resolve(app.addListener('backButton', back)).then((x) => { handle = x; }).catch(() => {});
+    return () => { handle?.remove?.(); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const treeRef = useRef(tree);
   treeRef.current = tree;
 
   // ---- capture: Alt+N, and things shared to the app from a phone's share menu ----
   const captureOpen = useRef(false);
-  const openCapture = useCallback(async () => {
+  const openCapture = useCallback(async (start = null) => {
     if (captureOpen.current || !treeRef.current) return;
     captureOpen.current = true;
-    await dialog.open((close) => <QuickCapture tree={treeRef.current} close={close} onSaved={() => { refreshTree(); refreshNotes(); }} />);
+    await dialog.open((close) => <QuickCapture tree={treeRef.current} start={typeof start === 'string' ? start : null} close={close} onSaved={() => { refreshTree(); refreshNotes(); }} />);
     captureOpen.current = false;
   }, [dialog, refreshTree, refreshNotes]);
+
+  // The + menus (Sidebar.jsx) ask for it by event: detail is null, 'photo' or 'dictate'.
+  useEffect(() => {
+    const on = (e) => openCapture(e.detail ?? null);
+    window.addEventListener('noteapp:capture', on);
+    return () => window.removeEventListener('noteapp:capture', on);
+  }, [openCapture]);
+
+  // 13.0: captures kept on the phone or tablet with no connection go once it's back (and when the app comes forward).
+  useEffect(() => {
+    if (!tree) return undefined;
+    const send = () => {
+      if (document.hidden) return;
+      flushCaptureQueue({ notebooks: treeRef.current?.notebooks ?? [] }).then((n) => {
+        if (!n) return;
+        dialog.toast(n === 1 ? 'Sent the capture saved on this device' : `Sent ${n} captures saved on this device`);
+        refreshTree();
+        window.dispatchEvent(new Event('noteapp:notes-changed'));
+      }).catch(() => { /* tries again next time */ });
+    };
+    send();
+    window.addEventListener('online', send);
+    document.addEventListener('visibilitychange', send);
+    return () => { window.removeEventListener('online', send); document.removeEventListener('visibilitychange', send); };
+  }, [!!tree]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const onKey = (e) => {
       if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.code === 'KeyN') {
@@ -1120,6 +1244,40 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
   };
   const goRef = useRef(go);
   goRef.current = go;
+  // 13.0 Share to Selah: whatever another app shares goes to the Inbox (with no connection, it waits on the device).
+  useEffect(() => {
+    if (!tree) return undefined;
+    return listenForShares(async (share) => {
+      const c = { dest: 'share', title: share.title, text: share.text, files: share.files };
+      const t = dialog.toast('Saving to the Inbox…', 'info', 0);
+      try {
+        const r = navigator.onLine ? await saveCapture(c) : null;
+        t.close();
+        if (!r) throw Object.assign(new Error('offline'), { offline: true });
+        dialog.toast(`Saved “${r.title}” to the Inbox`, 'info', 6000, { label: 'Open', onClick: () => openNoteRef.current(r.id) });
+        setSection('inbox');
+        refreshTree();
+        window.dispatchEvent(new Event('noteapp:notes-changed'));
+      } catch (e) {
+        t.close();
+        if (isOffline(e) && canQueue()) {
+          await queueCapture(c).then(() => dialog.toast('Saved on this device. It goes to the Inbox when you’re back online.'))
+            .catch((e2) => dialog.toast(e2.message, 'error'));
+        } else dialog.toast(e.message, 'error');
+      }
+    });
+  }, [!!tree]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 13.0: the app icon's quick actions (long-press Selah). Listening starts once your notebooks are loaded, so one
+  // tapped while the app was closed opens straight into it.
+  useEffect(() => {
+    if (!tree) return undefined;
+    return listenForQuickActions((id) => {
+      if (id === 'voice') goRef.current.voiceMemo();
+      else if (id === 'task') goRef.current.newTask();
+      else openCapture(id === 'photo' ? 'photo' : id === 'dictate' ? 'dictate' : null);
+    });
+  }, [!!tree]); // eslint-disable-line react-hooks/exhaustive-deps
   const openPalette = useCallback(async () => {
     if (paletteOpen.current || !treeRef.current) return;
     paletteOpen.current = true;
@@ -1159,7 +1317,8 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
       <UpdateBanner />
       <NoticeBanner />
       <WhatsNewCard onShowAll={() => dialog.open((c) => <WhatsNewDialog close={c} />)} />
-      <Tour />
+      {device.full && <Tour />}
+      {remoteOpen && <div className="remote-host"><RemotePage onClose={() => setRemoteOpen(false)} /></div>}
       <Sidebar
         tree={tree} view={section === 'notes' ? view : { type: 'none' }} onView={changeView} onNewNote={newNote}
         onRefresh={refreshTree} onRefreshAll={refreshAll} onMoveNote={moveNote} onSettings={openSettings} onOpenNote={openNote}
@@ -1168,10 +1327,15 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
           // 11.0: the rail always works in the main tab (a builder or other tab stays open beside it).
           if (activeUid !== 'main') { setActiveUid('main'); closePeek(); }
           if (s === section && (s === 'desk' || s === 'scripture')) setPageEpoch((n) => n + 1); // back to its home view
+          // 13.0: Home always opens on its Home tab (not Study, Teach… where you left it).
+          if (s === 'dashboard') {
+            try { localStorage.setItem('noteapp.homeTab', JSON.stringify('home')); } catch { /* storage unavailable */ }
+            window.dispatchEvent(new Event('noteapp:home-tab'));
+          }
           if (s === 'scripture') openScripture(); else setSection(s);
         }}
       />
-      <TopBar main={mainTab} tabs={tabs} activeUid={activeUid} onPick={pickTab} onClose={closeTab} tabMenu={tabMenu}
+      <TopBar main={mainTab} tabs={device.full ? tabs : tabs.filter((t) => t.kind !== 'builder')} activeUid={activeUid} onPick={pickTab} onClose={closeTab} tabMenu={tabMenu}
         onPalette={openPalette} nav={nav} onRefresh={refreshAll} />
       {section === 'dashboard' && (
         <main className="page-area" key={pageEpoch}>
@@ -1195,7 +1359,7 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
           <SermonsPage tree={tree} onPeekNote={peekNote} onOpenScripture={openScripture} onChanged={refreshTree} onMenu={() => setPane('sidebar')} />
         </main>
       )}
-      {section === 'build' && buildOpen && (
+      {section === 'build' && buildOpen && device.full && (
         <main className="page-area builder-area">
           <BuilderPage key={`${buildOpen.builder}-${buildOpen.id}`} {...buildOpen} close={() => closeBuilder(buildOpen.id)} />
         </main>
@@ -1263,7 +1427,9 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
       )}
       {section === 'tags' && (
         <main className="page-area" key={pageEpoch}>
+          <DeviceReadOnly on={device.phone}>
           <TagsPage tree={tree} onRefresh={() => { refreshTree(); refreshNotes(); }} onOpen={changeView} onMenu={() => setPane('sidebar')} />
+          </DeviceReadOnly>
         </main>
       )}
       {section === 'notes' && (<>

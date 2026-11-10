@@ -103,6 +103,7 @@ export function deviceName(ua = '', app = '') {
   const os = /iPhone/.test(ua) ? 'iPhone' : /iPad/.test(ua) ? 'iPad' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows'
     : /CrOS/.test(ua) ? 'ChromeOS' : /Macintosh|Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : null;
   if (app === 'windows') return 'Selah for Windows';
+  if (app === 'mobile') return os ? `Selah app on ${os}` : 'Selah mobile app';
   const base = browser && os ? `${browser} on ${os}` : browser || os || (ua ? ua.slice(0, 60) : 'Unknown device');
   return app === 'installed' ? `${base} (installed app)` : base;
 }

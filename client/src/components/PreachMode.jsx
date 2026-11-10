@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isMobileApp } from '../mobile.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { bibleConnected, biblePassage, creditHtml, passageCardHtml } from '../esv.js';
@@ -10,6 +11,9 @@ import { PARTS, firstSentence, parseLesson, section as lessonSection } from '../
 import { ReflectionDialog } from './CourseDialogs.jsx';
 import { exportManuscript } from './ManuscriptExport.jsx';
 import { exportForIpad } from './IpadExport.jsx';
+import { ensureDeck } from './PresentMode.jsx';
+import PreachInk from './PreachInk.jsx';
+import PreachAttendance, { useNoteAttendance } from './PreachAttendance.jsx';
 
 /**
  * Preaching mode: a note read-only, in large type, for the pulpit. Headings fold (tap one), Bible references show
@@ -118,6 +122,11 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   const [colors, setColors] = useState(() => pref('colors', false));
   // Outline also turns each numbered division into a numbered list (Manuscript keeps its paragraphs).
   const [outlineView, setOutlineView] = useState(() => pref('outline', false));
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [inkOpen, setInkOpen] = useState(() => pref('inkOpen', false));
+  // 13.0: a class or service that meets at this sermon's or lesson's event: take attendance from here.
+  const attendance = useNoteAttendance(note.id);
+  useEffect(() => { setPref('inkOpen', inkOpen); }, [inkOpen]);
   const html = useMemo(() => preachHtml(isSermon ? deliveryHtml(note.html, { color: colors, list: outlineView }) : note.html), [note, isSermon, colors, outlineView]);
   const passage = sermon?.passage || '';
   // The goal starts from the sermon's planned minutes; setting it here updates them (or is kept per note).
@@ -156,6 +165,13 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   useEffect(() => { setPref('outline', outlineView); }, [outlineView]);
   useEffect(() => { setPref('colors', colors); }, [colors]);
   useEffect(() => { setPref(`timer.${note.id}`, timer); }, [timer, note.id]);
+  // 13.0: the phone remote's Start and Pause.
+  const toggleRef = useRef(null);
+  useEffect(() => {
+    const onCmd = (e) => { if (e.detail?.slides === 'cmd' && e.detail.note === note.id && e.detail.cmd === 'timer') toggleRef.current?.(); };
+    window.addEventListener('noteapp:slides', onCmd);
+    return () => window.removeEventListener('noteapp:slides', onCmd);
+  }, [note.id]);
   useEffect(() => { if (teach) setPref(`spent.${note.id}`, spent); }, [spent, note.id, teach]);
   useEffect(() => { if (teach) setPref(`asked.${note.id}`, [...asked]); }, [asked, note.id, teach]);
   // Each second the timer runs counts toward the step you're in.
@@ -174,13 +190,17 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   useEffect(() => {
     let lock = null;
     const take = () => { if (document.visibilityState === 'visible') navigator.wakeLock?.request('screen').then((l) => { lock = l; }).catch(() => {}); };
+    const awake = isMobileApp() ? window.Capacitor?.Plugins?.KeepAwake : null;
+    Promise.resolve(awake?.keepAwake()).catch(() => {});
     take();
     document.addEventListener('visibilitychange', take);
     // The whole page, not this element: dialogs opened from here (logging it) must show above it.
-    if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    // (The mobile app already fills the screen, and iPadOS would only show its full-screen notice.)
+    if (!isMobileApp() && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
     return () => {
       document.removeEventListener('visibilitychange', take);
       lock?.release().catch(() => {});
+      Promise.resolve(awake?.allowSleep()).catch(() => {});
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
   }, []);
@@ -188,6 +208,17 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   const elapsed = timer.acc + (timer.start ? now - timer.start : 0);
   const running = !!timer.start;
   const toggleTimer = useCallback(() => setTimer((t) => (t.start ? { start: null, acc: t.acc + Date.now() - t.start } : { start: Date.now(), acc: t.acc })), []);
+  toggleRef.current = toggleTimer;
+  // With no slides there's no slide bar to tell the phone remote where things are, so this does (again every 20 s).
+  const remoteMeta = JSON.stringify({ title: note.title || 'Untitled', timer: { start: timer.start, acc: timer.acc, goal }, part: teach && part ? PARTS.find((x) => x.key === part)?.label ?? '' : '' });
+  useEffect(() => {
+    if (hasSlides) return undefined;
+    const send = () => api.slidesLive({ note: note.id, index: 0, step: 0, black: false, count: 0, mode: teach ? 'teach' : 'preach', ...JSON.parse(remoteMeta) }).catch(() => {});
+    const t = setTimeout(send, 120);
+    const beat = setInterval(send, 20_000);
+    return () => { clearTimeout(t); clearInterval(beat); };
+  }, [hasSlides, remoteMeta, note.id, teach]);
+  useEffect(() => (hasSlides ? undefined : () => api.endSlidesLive(note.id)), [hasSlides, note.id]);
   const resetTimer = () => { setTimer({ start: null, acc: 0 }); setSpent({}); };
   // With a goal the timer counts down: yellow under 5 minutes, orange under 1, red at 0 (then it counts the time over).
   const left = goal ? goal * 60_000 - elapsed : null;
@@ -221,6 +252,8 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   }, [teach, taught, dialog, note]);
 
   const finish = useCallback(async () => {
+    // On a touch screen a brushed X shouldn't end the sermon.
+    if (window.matchMedia?.('(hover: none)').matches && !(await dialog.confirm({ title: teach ? 'Leave teach mode?' : 'Leave preaching mode?', okLabel: 'Leave', cancelLabel: 'Keep going' }))) return;
     const ran = timer.acc + (timer.start ? Date.now() - timer.start : 0);
     if (teach) {
       if (!(await markTaught(true))) return;
@@ -332,7 +365,7 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
   }, [toggleTimer]);
 
   return (
-    <div ref={ref} className={`preach ${dark ? 'is-dark' : ''} ${outlineView ? 'is-outline' : ''} ${hasSlides ? 'has-slides' : ''} ${teach ? 'is-teach' : ''}`} style={{ '--preach-size': size }}>
+    <div ref={ref} className={`preach ${toolsOpen ? 'tools-open' : ''} ${dark ? 'is-dark' : ''} ${outlineView ? 'is-outline' : ''} ${hasSlides ? 'has-slides' : ''} ${teach ? 'is-teach' : ''}`} style={{ '--preach-size': size }}>
       <div className="pm-bar" role="toolbar" aria-label={teach ? 'Teaching' : 'Preaching'}>
         <div className="pm-bar-title">
           <strong>{note.title || 'Untitled'}</strong>
@@ -386,6 +419,11 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
             <button type="button" className={`pm-icon ${colors ? 'is-on' : ''}`} onClick={() => setColors(!colors)} aria-pressed={colors}
               aria-label="Color-code the elements" title={colors ? 'Plain text' : 'Color-code Explanation, Illustration, Argumentation, Application'}><Icon name="highlight" size={16} /></button>
           )}
+          {attendance && (
+            <button type="button" className="pm-icon" onClick={() => dialog.open((c) => <PreachAttendance info={attendance} close={c} dialog={dialog} />)}
+              aria-label="Attendance" title={`Take attendance: ${attendance.group.name}`}><Icon name="users" size={16} /></button>
+          )}
+          <button type="button" className={`pm-icon ${inkOpen ? 'is-on' : ''}`} onClick={() => setInkOpen(!inkOpen)} aria-pressed={inkOpen} aria-label="Ink" title="Ink: write on it with a pen (a mouse writes while this is open)"><Icon name="pen" size={16} /></button>
           <button type="button" className="pm-icon" onClick={() => setSize((z) => Math.max(0.8, Math.round((z - 0.1) * 10) / 10))} aria-label="Smaller text">A−</button>
           <button type="button" className="pm-icon" onClick={() => setSize((z) => Math.min(2.4, Math.round((z + 0.1) * 10) / 10))} aria-label="Larger text">A+</button>
           <button type="button" className="pm-icon" onClick={() => exportManuscript(dialog, note.id, { note, view: { outline: outlineView, colors } })}
@@ -402,7 +440,8 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
               if (logged) dialog.toast('Logged as preached');
             }} aria-label="Log as preached" title="Log as preached"><Icon name="checkCircle" size={16} /></button>
           )}
-          <button type="button" className="pm-icon" onClick={finish} aria-label={teach ? 'Leave teach mode (Esc)' : 'Leave preaching mode (Esc)'} title="Leave (Esc)"><Icon name="x" size={18} /></button>
+          <button type="button" className={`pm-icon pm-more ${toolsOpen ? 'is-on' : ''}`} onClick={() => setToolsOpen(!toolsOpen)} aria-expanded={toolsOpen} aria-label="More tools" title="More tools"><Icon name="more" size={18} /></button>
+          <button type="button" className="pm-icon pm-exit" onClick={finish} aria-label={teach ? 'Leave teach mode (Esc)' : 'Leave preaching mode (Esc)'} title="Leave (Esc)"><Icon name="x" size={18} /></button>
         </div>
       </div>
       {teach && (
@@ -433,6 +472,7 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
         <h1 className="pm-title">{note.title || 'Untitled'}</h1>
         {/* The note's own content, laid out for preaching. */}
         <div className="pm-content" ref={contentRef} dangerouslySetInnerHTML={{ __html: html }} />
+        <PreachInk noteId={note.id} pageRef={bodyRef} contentRef={contentRef} version={`${html}|${size}`} open={inkOpen} onClose={() => setInkOpen(false)} dialog={dialog} />
       </article>
       {hasSlides && (
         <SlideStrip noteId={note.id} deck={deck} root={contentRef} version={html}
@@ -445,8 +485,10 @@ function Preach({ note, sermon, deck, teach, dialog, close }) {
 /** Opens a lesson in teach mode (preaching mode with the lesson's steps, questions and Mark taught). */
 export async function teachNote(dialog, noteId) {
   try {
-    const [note, info, slides] = await Promise.all([api.getNote(noteId), api.lesson(noteId).catch(() => null), api.slides(noteId).catch(() => null)]);
-    await dialog.open((close) => <Preach note={note} teach={info ?? {}} deck={slides?.deck} dialog={dialog} close={close} />, { dismissable: false });
+    const [note, info] = await Promise.all([api.getNote(noteId), api.lesson(noteId).catch(() => null)]);
+    // 13.0: a lesson whose slides were never opened gets them from its outline now, as the slides editor would.
+    const deck = await ensureDeck(note).catch(() => null);
+    await dialog.open((close) => <Preach note={note} teach={info ?? {}} deck={deck} dialog={dialog} close={close} />, { dismissable: false });
   } catch (e) {
     dialog.toast(e.message, 'error');
   }
@@ -455,8 +497,9 @@ export async function teachNote(dialog, noteId) {
 /** Opens a note in preaching mode. */
 export async function preachNote(dialog, noteId) {
   try {
-    const [note, sermon, slides] = await Promise.all([api.getNote(noteId), api.noteSermon(noteId).catch(() => null), api.slides(noteId).catch(() => null)]);
-    await dialog.open((close) => <Preach note={note} sermon={sermon} deck={slides?.deck} dialog={dialog} close={close} />, { dismissable: false });
+    const [note, sermon] = await Promise.all([api.getNote(noteId), api.noteSermon(noteId).catch(() => null)]);
+    const deck = await ensureDeck(note).catch(() => null);
+    await dialog.open((close) => <Preach note={note} sermon={sermon} deck={deck} dialog={dialog} close={close} />, { dismissable: false });
   } catch (e) {
     dialog.toast(e.message, 'error');
   }

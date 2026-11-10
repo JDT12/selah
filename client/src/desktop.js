@@ -4,9 +4,16 @@
 // browser's own. Reminders are on per device (Settings → General → Notifications); each event and task chooses its
 // own (reminders.js).
 import { api } from './api.js';
-import { addDays, formatTime, nowParts, relativeDay, toUTC } from './time.js';
-import { remindersFor } from './reminders.js';
+import { addDays, fmtDT, formatTime, fromWallClock, nowParts, relativeDay } from './time.js';
+import { WINDOW, agendaItems as sharedAgenda, wallMin } from '../../shared/agenda.js';
 import { focusOn } from './focus.js';
+import { device } from './device.js';
+
+// 13.0: the phone and tablet apps have no web notifications, so reminders are scheduled on the device ahead of time
+// (@capacitor/local-notifications). They come even when the app is closed. At an event's start the phone says to
+// take attendance (when a group meets then), and the tablet opens the lesson or sermon linked to it (else attendance).
+const local = () => (typeof window !== 'undefined' && window.Capacitor?.isNativePlatform?.() ? window.Capacitor.Plugins?.LocalNotifications ?? null : null);
+export const isAppNotifications = () => !!local();
 
 // Tauri always gives its pages window.isTauri and __TAURI_INTERNALS__ (with invoke). The friendlier __TAURI__ global
 // isn't there for a page from the server, so this goes by what always is.
@@ -17,7 +24,7 @@ const tauri = () => {
 /** Selah Desktop's bridge (desktop-app/preload.cjs), or null. */
 export const electron = () => (typeof window !== 'undefined' && window.selahDesktop?.kind === 'electron' ? window.selahDesktop : null);
 export const isDesktopApp = () => !!(electron() || window.isTauri || window.__TAURI_INTERNALS__);
-export const canNotify = () => isDesktopApp() || typeof Notification !== 'undefined';
+export const canNotify = () => isAppNotifications() || isDesktopApp() || typeof Notification !== 'undefined';
 
 // The type a browser would give a chosen file, by its extension (the server goes by it).
 const TYPES = {
@@ -73,6 +80,7 @@ const store = {
 export const remindersOn = () => store.get(PREF) === 'on';
 
 async function permitted() {
+  if (local()) return (await local().checkPermissions().catch(() => ({}))).display === 'granted';
   if (electron()) return true;
   if (isDesktopApp()) return !!(await tauri()?.invoke('plugin:notification|is_permission_granted').catch(() => false));
   return typeof Notification !== 'undefined' && Notification.permission === 'granted';
@@ -80,6 +88,7 @@ async function permitted() {
 
 async function askPermission() {
   if (await permitted()) return true;
+  if (local()) return (await local().requestPermissions().catch(() => ({}))).display === 'granted';
   if (isDesktopApp()) return (await tauri()?.invoke('plugin:notification|request_permission').catch(() => 'denied')) === 'granted';
   if (typeof Notification === 'undefined') return false;
   return (await Notification.requestPermission()) === 'granted';
@@ -103,6 +112,11 @@ if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
  * 'service-worker' or 'browser'); throws with the reason if it couldn't be.
  */
 export async function notify(title, body, section) {
+  if (local()) {
+    if (!(await permitted())) throw new Error('Notifications are off for Selah in this device’s settings.');
+    await local().schedule({ notifications: [{ id: 1, title, body, schedule: { at: new Date(Date.now() + 1500), allowWhileIdle: true }, extra: { open: { section } } }] });
+    return 'app';
+  }
   const e = electron();
   if (e) {
     try {
@@ -152,46 +166,145 @@ export async function testNotification() {
 export async function setReminders(on) {
   if (on && !(await askPermission())) return false;
   store.set(PREF, on ? 'on' : 'off');
-  if (on) checkReminders();
+  if (local()) await scheduleAppReminders().catch(() => {});
+  else if (on) checkReminders();
   return on;
 }
 
 // ---- reminders ----
 const LATE = 15; // minutes: a reminder missed by more than this (the app was closed) isn't shown
-const WINDOW = 8; // days ahead to look: the longest lead time is a week
 let agenda = null; // { date, at, items: [{ key, at (wall-clock minutes), title, body, open }] }
 
-// Wall-clock minutes in Selah's time zone, so '2026-10-23T09:00' and nowParts() compare directly.
-const wallMin = (s) => toUTC(s).getTime() / 60_000;
-/** 'today at 2:00 PM', 'tomorrow', 'Friday at 9:00 AM' */
-function when(date, time) {
-  const day = relativeDay(date);
-  const d = day === 'Today' || day === 'Tomorrow' || day === 'Yesterday' ? day.toLowerCase() : day;
-  return time ? `${d} at ${formatTime(time)}` : d;
+/** Reminders due from `date` for the next week: { key, at (wall-clock minutes), title, body, open } (shared/agenda.js). */
+export async function agendaItems(date) {
+  const [cal, routine] = await Promise.all([api.calendar(date, addDays(date, WINDOW)), api.routine(date, date).catch(() => null)]);
+  return sharedAgenda({ cal, routine, date, app: !!local(), role: device.role, fmt: { formatTime, relativeDay } });
 }
 
 async function loadAgenda(date) {
-  const cal = await api.calendar(date, addDays(date, WINDOW));
-  const items = [];
-  for (const t of cal.tasks ?? []) {
-    if (t.completed_at || !t.due_date) continue;
-    // A task without a time counts back from midnight at the start of its day.
-    const due = `${t.due_date}T${t.due_time ?? '00:00'}`;
-    for (const lead of remindersFor('task', t)) {
-      const body = lead === 0 && t.due_time ? `Due now (${formatTime(t.due_time)})` : `Due ${when(t.due_date, t.due_time)}`;
-      items.push({ key: `t${t.id}@${due}-${lead}`, at: wallMin(due) - lead, title: t.title || 'Task', body, open: 'tasks' });
-    }
-  }
-  for (const e of cal.events ?? []) {
-    const day = e.start.slice(0, 10);
-    const time = e.all_day ? null : e.start.slice(11, 16);
-    const start = `${day}T${time ?? '00:00'}`;
-    for (const lead of remindersFor('event', e)) {
-      const body = lead === 0 && time ? `Starts now (${formatTime(time)})` : `Starts ${when(day, time)}`;
-      items.push({ key: `e${e.id}@${e.start}-${lead}`, at: wallMin(start) - lead, title: e.title || 'Event', body, open: 'calendar' });
-    }
-  }
-  agenda = { date, at: Date.now(), items };
+  agenda = { date, at: Date.now(), items: await agendaItems(date) };
+}
+
+// ---- the apps: scheduled on the device ----
+const MAX_SCHEDULED = 60; // iOS keeps 64 at most
+const idOf = (key) => { let h = 7; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0; return (Math.abs(h) % 2_000_000_000) + 10; };
+
+/** Replaces what's scheduled on this device with the next week's reminders (none when reminders are off). */
+export async function scheduleAppReminders() {
+  const n = local();
+  if (!n) return 0;
+  const pending = (await n.getPending().catch(() => ({ notifications: [] }))).notifications ?? [];
+  if (pending.length) await n.cancel({ notifications: pending.map((p) => ({ id: p.id })) }).catch(() => {});
+  if (!remindersOn() || !(await permitted())) { reportPush([]); return 0; }
+  const now = nowParts();
+  const nowMin = wallMin(`${now.date}T${now.time}`);
+  // `at` is wall-clock minutes in Selah's time zone (as UTC-mapped Dates, time.js); the device needs the real moment.
+  const moment = (r) => fromWallClock(fmtDT(new Date(r.at * 60_000)));
+  const items = (await agendaItems(now.date)).filter((r) => r.at > nowMin && moment(r) > Date.now() + 5000).sort((a, b) => a.at - b.at).slice(0, MAX_SCHEDULED);
+  if (!items.length) { reportPush([]); return 0; }
+  await n.schedule({ notifications: items.map((r) => ({
+    id: idOf(r.key), title: r.title, body: r.body,
+    schedule: { at: new Date(moment(r)), allowWhileIdle: true },
+    extra: { open: typeof r.open === 'string' ? { section: r.open } : r.open },
+  })) });
+  reportPush(items);
+  return items.length;
+}
+
+// ---- the apps: push (13.0, server/push.js) ----
+// The server sends a reminder only to a device that doesn't have it scheduled (changed elsewhere while the app was
+// closed), a quiet push to reschedule when the calendar changes, and a note when someone shares with you.
+const pushPlugin = () => (local() ? window.Capacitor.Plugins?.PushNotifications ?? null : null);
+const PUSH_TOKEN = 'selah.push.token';
+let pushToken = (() => { try { return localStorage.getItem(PUSH_TOKEN); } catch { return null; } })();
+let lastScheduled = [];
+let reportTimer = null;
+
+/** Tells the server this device's token, whether reminders are on here, and what's scheduled on the device. */
+function reportPush(items) {
+  lastScheduled = items.map((r) => ({ key: r.key, at: r.at }));
+  if (!pushToken) return;
+  clearTimeout(reportTimer);
+  reportTimer = setTimeout(() => {
+    api.pushDevice({
+      token: pushToken, platform: window.Capacitor.getPlatform(), role: device.role,
+      name: device.tablet ? 'Tablet' : 'Phone', reminders: remindersOn(), scheduled: lastScheduled,
+    }).catch(() => { /* next scheduling tries again */ });
+  }, 500);
+}
+
+/** Signing out: this device stops getting pushes for this Selah. */
+export async function forgetPush() {
+  if (!pushToken) return;
+  await api.forgetPushDevice(pushToken).catch(() => {});
+  try { localStorage.removeItem(PUSH_TOKEN); } catch { /* fine */ }
+  pushToken = null;
+}
+
+async function startAppPush() {
+  const pn = pushPlugin();
+  if (!pn) return;
+  const platform = window.Capacitor.getPlatform();
+  try {
+    if (!(await api.pushStatus(platform)).available) return;
+    // Android builds without Firebase would crash on register(); the app says whether this one has it.
+    if (platform === 'android' && !(await window.Capacitor.Plugins?.SelahApp?.info?.().catch(() => null))?.push) return;
+    let perm = await pn.checkPermissions();
+    if (perm.receive === 'prompt' || perm.receive === 'prompt-with-rationale') perm = await pn.requestPermissions();
+    if (perm.receive !== 'granted') return;
+  } catch { return; }
+  await pn.addListener('registration', (t) => {
+    pushToken = t.value;
+    try { localStorage.setItem(PUSH_TOKEN, t.value); } catch { /* registers again next launch */ }
+    reportPush(lastScheduled);
+  });
+  await pn.addListener('pushNotificationReceived', (p) => {
+    const data = p.data ?? {};
+    if (data.kind === 'sync') { scheduleAppReminders().catch(() => {}); return; }
+    // Android doesn't show a push while the app is open; iOS does (presentationOptions in capacitor.config.json).
+    if (platform === 'android' && p.title) notify(p.title, p.body ?? '', parseOpen(data.open)?.section ?? null).catch(() => {});
+  });
+  await pn.addListener('pushNotificationActionPerformed', (a) => openFromNotification(parseOpen(a?.notification?.data?.open)));
+  await pn.register().catch(() => {});
+}
+const parseOpen = (v) => { if (!v) return null; if (typeof v === 'object') return v; try { return JSON.parse(v); } catch { return null; } };
+
+/**
+ * For Settings: what's scheduled on this device ({ count, next: Date|null }) and, on Android, whether reminders can
+ * come on time (Android 14+ makes "Alarms & reminders" something you allow; without it they can come minutes late).
+ */
+export async function appReminderStatus() {
+  const n = local();
+  if (!n) return null;
+  const pending = (await n.getPending().catch(() => ({ notifications: [] }))).notifications ?? [];
+  const times = pending.map((p) => new Date(p.schedule?.at ?? 0).getTime()).filter((t) => t > Date.now()).sort((a, b) => a - b);
+  let exact = 'granted';
+  if (window.Capacitor.getPlatform?.() === 'android') exact = (await n.checkExactNotificationSetting?.().catch(() => null))?.exact_alarm ?? 'granted';
+  return { count: times.length, next: times.length ? new Date(times[0]) : null, exact };
+}
+/** Opens Android's "Alarms & reminders" setting for Selah (the app restarts and everything is scheduled again). */
+export const allowExactReminders = () => local()?.changeExactNotificationSetting?.().catch(() => null);
+
+/** A tapped notification opens what it's about. */
+function openFromNotification(open) {
+  if (!open) return;
+  if (open.note) window.dispatchEvent(new CustomEvent('noteapp:open-note', { detail: open.note }));
+  else if (open.attendance) {
+    try { localStorage.setItem('noteapp.attendance.open', JSON.stringify(open.attendance)); } catch { /* opens the list */ }
+    window.dispatchEvent(new CustomEvent('noteapp:show-section', { detail: 'attendance' }));
+  } else if (open.section) window.dispatchEvent(new CustomEvent('noteapp:show-section', { detail: ['tasks', 'dailywalk', 'shared', 'inbox'].includes(open.section) ? open.section : 'calendar' }));
+}
+
+function startAppReminders() {
+  const n = local();
+  let soon = null;
+  const again = () => { clearTimeout(soon); soon = setTimeout(() => scheduleAppReminders().catch(() => {}), 1500); };
+  again();
+  setInterval(again, 15 * 60_000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') again(); });
+  window.addEventListener('noteapp:live', (e) => { if (/^\/api\/(tasks|events|attendance|routine|plans|daily-walk)/.test(e.detail?.url ?? '')) again(); });
+  Promise.resolve(n.addListener('localNotificationActionPerformed', (a) => openFromNotification(a?.notification?.extra?.open))).catch(() => {});
+  startAppPush().catch(() => {});
 }
 
 /** Reminders already shown: { key: when it was due }, kept for two days. */
@@ -231,9 +344,10 @@ export async function checkReminders() {
 let timer = null;
 export function startReminders() {
   if (timer) return;
+  if (local()) { timer = true; startAppReminders(); return; }
   if (remindersOn()) serviceWorker();
   checkReminders();
   timer = setInterval(checkReminders, 30_000);
   // A task or event changed anywhere: the next check reloads the list.
-  window.addEventListener('noteapp:live', (e) => { if (/^\/api\/(tasks|events)/.test(e.detail?.url ?? '')) agenda = null; });
+  window.addEventListener('noteapp:live', (e) => { if (/^\/api\/(tasks|events|routine|plans|daily-walk)/.test(e.detail?.url ?? '')) agenda = null; });
 }

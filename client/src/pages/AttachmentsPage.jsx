@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { device } from '../device.js';
 import { api, fileUrl, formatDate, formatSize, pdfViewerUrl } from '../api.js';
 import { useDialog } from '../components/Dialogs.jsx';
 import Icon from '../components/Icon.jsx';
@@ -156,9 +157,9 @@ function PreviewDialog({ list, start, close, onOpenNote, actions }) {
         <div className="att-info-actions">
           <a className="btn" href={`${fileUrl(a.id)}?download=1`}><Icon name="download" size={15} /> Download</a>
           <a className="btn" href={fileUrl(a.id)} target="_blank" rel="noopener noreferrer"><Icon name="external" size={15} /> Open</a>
-          <button className="btn" onClick={() => { setName(d.filename); setRenaming(true); }}><Icon name="pen" size={15} /> Rename</button>
-          <button className="btn" onClick={async () => { if (await actions.move([a])) close(); }}><Icon name="merge" size={15} /> Move…</button>
-          <button className="btn btn-danger-text" onClick={async () => { if (await actions.remove([a])) close(); }}><Icon name="trash" size={15} /> Delete…</button>
+          {!device.phone && (<button className="btn" onClick={() => { setName(d.filename); setRenaming(true); }}><Icon name="pen" size={15} /> Rename</button>)}
+          {!device.phone && (<button className="btn" onClick={async () => { if (await actions.move([a])) close(); }}><Icon name="merge" size={15} /> Move…</button>)}
+          {!device.phone && (<button className="btn btn-danger-text" onClick={async () => { if (await actions.remove([a])) close(); }}><Icon name="trash" size={15} /> Delete…</button>)}
         </div>
         <p className="muted att-count">{i + 1} of {list.length} · ← → to move through</p>
         <div className="modal-actions"><button className="btn" onClick={() => close()}>Close</button></div>
@@ -316,10 +317,10 @@ export default function AttachmentsPage({ tree, onOpenNote, onChanged, onMenu })
     { label: 'Preview', onClick: () => preview(index) },
     a.noteId && { label: 'Open note', onClick: () => onOpenNote(a.noteId) },
     { label: 'Download', onClick: () => { window.location.href = `${fileUrl(a.id)}?download=1`; } },
-    'sep',
-    { label: 'Move to another note…', onClick: () => actions.move([a]) },
-    { label: 'Delete…', danger: true, onClick: () => actions.remove([a]) },
-  ]);
+    !device.phone && 'sep',
+    !device.phone && { label: 'Move to another note…', onClick: () => actions.move([a]) },
+    !device.phone && { label: 'Delete…', danger: true, onClick: () => actions.remove([a]) },
+  ].filter(Boolean));
 
   const s = data?.summary;
   const quick = s ? [
@@ -340,7 +341,7 @@ export default function AttachmentsPage({ tree, onOpenNote, onChanged, onMenu })
           <p className="muted">{s ? `${plural(s.count, 'file')} · ${formatSize(s.bytes)}` : 'Loading…'}{busy ? ` · ${busy}` : ''}</p>
         </div>
         <div className="page-actions">
-          <button className="btn btn-primary" onClick={() => fileInput.current?.click()} disabled={!!busy}><Icon name="upload" size={15} /> Add files…</button>
+          {!device.phone && (<button className="btn btn-primary" onClick={() => fileInput.current?.click()} disabled={!!busy}><Icon name="upload" size={15} /> Add files…</button>)}
           <input ref={fileInput} type="file" multiple hidden onChange={(e) => { upload([...e.target.files]); e.target.value = ''; }} />
         </div>
       </header>
@@ -420,8 +421,8 @@ export default function AttachmentsPage({ tree, onOpenNote, onChanged, onMenu })
         {chosen.length > 0 && (
           <span className="att-selbar-actions">
             <a className="btn btn-small" href={zipHref} download><Icon name="download" size={14} /> Download zip</a>
-            <button className="btn btn-small" onClick={() => actions.move(chosen)} disabled={!!busy}><Icon name="merge" size={14} /> Move…</button>
-            <button className="btn btn-small btn-danger" onClick={() => actions.remove(chosen)} disabled={!!busy}><Icon name="trash" size={14} /> Delete…</button>
+            {!device.phone && (<button className="btn btn-small" onClick={() => actions.move(chosen)} disabled={!!busy}><Icon name="merge" size={14} /> Move…</button>)}
+            {!device.phone && (<button className="btn btn-small btn-danger" onClick={() => actions.remove(chosen)} disabled={!!busy}><Icon name="trash" size={14} /> Delete…</button>)}
             <button className="btn btn-small" onClick={() => setSelected(new Map())}>Clear</button>
           </span>
         )}

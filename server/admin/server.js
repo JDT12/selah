@@ -10,6 +10,7 @@ import { securityHeaders } from '../headers.js';
 import adminRoutes from './routes.js';
 import { startMonitor } from './monitor.js';
 import { startSharingRelay } from './sharing.js';
+import { startPushRelay } from './push.js';
 import { closeStaleJobs, cloud } from './store.js';
 import { allowedRanges } from './gateway.js';
 
@@ -94,3 +95,4 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
 }
 startMonitor(app.log);
 startSharingRelay(app.log);
+startPushRelay(app.log);

@@ -1,5 +1,6 @@
 import { db, tx } from './db.js';
 import { addDays, expand, today } from './recurrence.js';
+import { compareNames } from '../shared/names.js';
 
 /**
  * Attendance (11.0), a tab on Plan: the classes you teach, the services you preach and your small groups. A group
@@ -136,8 +137,12 @@ function groupNudges(g, people, meetings) {
 
 const countOf = (g, m) => (g.mode === 'headcount' ? m.headcount ?? 0 : m.present.length + (m.headcount ?? 0));
 
+/** A group's people: regulars before visitors, each by last name so couples sit together. */
+const peopleOf = (groupId) => db.prepare('SELECT * FROM att_people WHERE group_id = ?').all(groupId)
+  .sort((a, b) => (a.visitor - b.visitor) || compareNames(a.name, b.name) || (a.id - b.id));
+
 function summary(g) {
-  const people = db.prepare('SELECT * FROM att_people WHERE group_id = ? ORDER BY name COLLATE NOCASE').all(g.id);
+  const people = peopleOf(g.id);
   const meetings = takenMeetings(g.id);
   const recent = meetings.slice(-8);
   const ev = g.event_id ? db.prepare('SELECT id, title, start_at, rrule FROM events WHERE id = ?').get(g.event_id) : null;
@@ -154,7 +159,7 @@ function summary(g) {
 
 function detail(g) {
   const t = today();
-  const people = db.prepare('SELECT * FROM att_people WHERE group_id = ? ORDER BY visitor, name COLLATE NOCASE').all(g.id);
+  const people = peopleOf(g.id);
   const meetings = takenMeetings(g.id);
   // The dates to show: its event's from twelve weeks back to two weeks ahead, and every meeting taken.
   const from = addDays(t, -7 * WEEKS_SHOWN);
@@ -197,7 +202,7 @@ export function groupCsv(g) {
     lines.push(['Date', 'Headcount', 'Notes']);
     for (const m of meetings) lines.push([m.date, m.headcount ?? '', m.notes]);
   } else {
-    const people = db.prepare('SELECT * FROM att_people WHERE group_id = ? ORDER BY visitor, name COLLATE NOCASE').all(g.id);
+    const people = peopleOf(g.id);
     lines.push(['Name', 'Visitor', ...meetings.map((m) => m.date), 'Attended']);
     for (const p of people) {
       const marks = meetings.map((m) => (m.date < p.since ? '' : m.present.includes(p.id) ? 'P' : 'A'));
@@ -210,6 +215,20 @@ export function groupCsv(g) {
 }
 
 export default async function attendance(app) {
+  // 13.0: Preach and Teach take attendance for a sermon or lesson linked to an event whose group meets then.
+  app.get('/api/notes/:id/attendance', async (req) => {
+    const noteId = intParam(req.params.id);
+    const g = db.prepare(`SELECT g.* FROM att_groups g JOIN events e ON e.id = g.event_id
+      WHERE g.archived = 0 AND (e.note_id = ? OR EXISTS (SELECT 1 FROM events x WHERE x.parent_id = e.id AND x.note_id = ?))
+      ORDER BY g.id LIMIT 1`).get(noteId, noteId);
+    if (!g) return { group: null };
+    const t = today();
+    const recent = eventDates(g.event_id, addDays(t, -7), addDays(t, 1));
+    const next = eventDates(g.event_id, t, addDays(t, 60))[0];
+    const date = recent.includes(t) ? t : recent.at(-1) ?? next ?? t;
+    return { group: { id: g.id, name: g.name, mode: g.mode }, date };
+  });
+
   app.get('/api/attendance', async () => {
     const groups = db.prepare('SELECT * FROM att_groups ORDER BY archived, name COLLATE NOCASE').all().map(summary);
     return { groups, nudges: groups.flatMap((g) => g.nudges), kinds: KINDS };

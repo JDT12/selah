@@ -15,7 +15,8 @@ export function startLive() {
       window.dispatchEvent(new CustomEvent(data.slides ? 'noteapp:slides' : 'noteapp:live', { detail: data }));
     } catch { /* bad message */ }
   };
-  source.onerror = () => { dropped = true; };
+  // 13.0: 'noteapp:live-down' as soon as it drops (the phone remote says so), then 'noteapp:live-reconnect' when it's back.
+  source.onerror = () => { if (!dropped) window.dispatchEvent(new Event('noteapp:live-down')); dropped = true; };
   source.onopen = () => {
     if (dropped) window.dispatchEvent(new Event('noteapp:live-reconnect'));
     dropped = false;

@@ -138,7 +138,7 @@ export function prepareRelease({ channel = 'beta' } = {}) {
       } else {
         setSetting('beta_release', version);
       }
-      pruneReleases();
+      await pruneReleases();
       job.finish(true, { release: version, channel: channel === 'main' ? 'main' : 'beta' });
     } catch (e) {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -154,7 +154,7 @@ export function prepareRelease({ channel = 'beta' } = {}) {
  * Old releases nobody runs any more go. The newest few stay, and so do main, beta and every release a tenant runs or
  * could roll back to.
  */
-function pruneReleases() {
+async function pruneReleases() {
   const keep = new Set([currentRelease(), betaRelease(), ...listTenants().flatMap((t) => [t.release, t.previousRelease])].filter(Boolean));
   const main = currentRelease();
   // A beta (11.1.0-beta.3) is done with once its release (11.1.0) or a later one is main, so it goes whatever its age.
@@ -163,6 +163,20 @@ function pruneReleases() {
   for (const r of all.filter((x, i) => i >= KEEP || spent(x))) {
     if (!keep.has(r.release)) fs.rmSync(path.join(paths.releases, r.release), { recursive: true, force: true });
   }
+  // Awaited: from the command line the process ends as soon as the job does.
+  if (cloud().runner === 'docker') await pruneImages().catch(() => {});
+}
+
+/** Each release's image is about 1 GB, so one goes with its release. Docker itself refuses to remove an image in use. */
+async function pruneImages() {
+  const listed = await run('docker', ['images', '--format', '{{.Tag}}', 'selah'], { timeout: 60_000 });
+  if (!listed.ok) return;
+  const have = new Set(listReleases().map((r) => r.release));
+  for (const tag of listed.stdout.split('\n').map((s) => s.trim())) {
+    if (/^\d+\.\d+\.\d+/.test(tag) && !have.has(tag)) await run('docker', ['rmi', `selah:${tag}`], { timeout: 120_000 });
+  }
+  // Removing the tag can leave the image behind, unnamed, still holding its disk space.
+  await run('docker', ['image', 'prune', '-f'], { timeout: 600_000 });
 }
 
 /** Beta becomes main: new tenants start on it, and it's what Update offers. Tenants already on a release stay there. */

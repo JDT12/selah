@@ -9,6 +9,7 @@ import { Credit, TranslationPicker, useBible } from '../components/TranslationPi
 import { biblePassage, passageCardHtml } from '../esv.js';
 import { dateOf } from '../../../shared/readingPlans.js';
 import { todayStr } from '../time.js';
+import { useStoredState } from '../useStoredState.js';
 import {
   NewPlanDialog, PlanScheduleDialog, download, downloadTemplate, fileName, fmtDay, plural, weekdaysLabel,
 } from '../components/PlanDialogs.jsx';
@@ -51,8 +52,8 @@ export function PlanPassage({ item, onToggle, bible }) {
   );
 }
 
-/** A plan's card: where you are, today's passages, and catching up. */
-function PlanCard({ plan, bible, onChanged, dialog }) {
+/** A plan's card (13.0: folded to one line; today's passages are in the Today list above): where you are and catching up. */
+function PlanCard({ plan, bible, onChanged, dialog, open, onToggle }) {
   const [catching, setCatching] = useState(false);
   const today = todayStr();
   const run = async (fn, done) => {
@@ -91,16 +92,22 @@ function PlanCard({ plan, bible, onChanged, dialog }) {
   const nextDate = plan.next != null ? dateOf(plan, plan.next) : null;
 
   return (
-    <section className={`dw-card rplan-card ${paused ? 'is-paused' : ''}`}>
-      <header className="dw-card-head">
-        <div className="dw-card-kicker">
-          <span>{plan.title}</span>
-          <span className="dw-card-author">
-            {plan.finished ? 'Finished' : plan.notStarted ? `Starts ${fmtDay(plan.start_date, { weekday: 'long', month: 'long', day: 'numeric' })}`
-              : `Day ${Math.min(plan.day, plan.days - 1) + 1} of ${plan.days}`}
-            {paused ? ' · paused' : ''}
+    <section className={`rplan-card ${paused ? 'is-paused' : ''} ${open ? 'is-open' : ''}`}>
+      <header className="rplan-card-head">
+        <button type="button" className="rplan-card-main" onClick={onToggle} aria-expanded={open}>
+          <span className="rplan-ring" style={{ '--pct': `${pct}%` }} aria-hidden="true"><span>{pct}%</span></span>
+          <span className="rplan-card-text">
+            <span className="rplan-card-title">{plan.title}</span>
+            <span className="rplan-card-sub">
+              {plan.finished ? 'Finished' : plan.notStarted ? `Starts ${fmtDay(plan.start_date, { weekday: 'long', month: 'long', day: 'numeric' })}`
+                : `Day ${Math.min(plan.day, plan.days - 1) + 1} of ${plan.days}`}
+              {paused ? ' · paused' : ` · ${weekdaysLabel(plan.weekdays)}`}
+            </span>
           </span>
-        </div>
+          {!paused && plan.behindCount > 0 && <span className="rplan-chip is-behind">{plural(plan.behindCount, 'day')} behind</span>}
+          {plan.today && plan.today.items.every((x) => x.read) && <span className="rplan-chip is-done"><Icon name="check" size={12} /> Today</span>}
+          <Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} className="rplan-caret" />
+        </button>
         <Menu align="right" trigger={({ toggle }) => (
           <button type="button" className="icon-btn" onClick={toggle} aria-label={`More for ${plan.title}`} title="More"><Icon name="more" size={16} /></button>
         )} items={[
@@ -113,10 +120,11 @@ function PlanCard({ plan, bible, onChanged, dialog }) {
           { label: 'Delete plan…', danger: true, onClick: remove },
         ]} />
       </header>
+      {open && <div className="rplan-card-body">
       <div className="rplan-progress" title={`${plan.progress.read} of ${plan.progress.total} passages read`}>
         <span style={{ width: `${pct}%` }} />
       </div>
-      <p className="rplan-meta muted">{pct}% read · {weekdaysLabel(plan.weekdays)}</p>
+      <p className="rplan-meta muted">{plan.progress.read} of {plan.progress.total} passages read</p>
 
       {!paused && plan.behindCount > 0 && (
         <div className="rplan-behind">
@@ -138,15 +146,7 @@ function PlanCard({ plan, bible, onChanged, dialog }) {
       ))}
       {!paused && catching && plan.behindCount > plan.behind.length && <p className="muted">And {plural(plan.behindCount - plan.behind.length, 'more day')}: see the whole plan.</p>}
 
-      {!paused && plan.today && (
-        <div className="rplan-day">
-          <div className="rplan-day-head">
-            <span>Today{plan.today.items.every((x) => x.read) ? ' · done' : ''}</span>
-            {!plan.today.items.every((x) => x.read) && <button type="button" className="link-btn" onClick={() => tick(plan.today.day, null, true)}>Mark all read</button>}
-          </div>
-          <ul className="rplan-passages">{plan.today.items.map((x) => <PlanPassage key={x.i} item={x} bible={bible} onToggle={(read) => tick(plan.today.day, x.i, read)} />)}</ul>
-        </div>
-      )}
+      {!paused && plan.today && <p className="muted rplan-rest">Today’s passages are in the Today list above.</p>}
       {!paused && !plan.today && !plan.finished && (
         <p className="muted rplan-rest">
           {plan.notStarted ? 'Nothing to read yet.' : 'No reading today.'}
@@ -159,6 +159,41 @@ function PlanCard({ plan, bible, onChanged, dialog }) {
           <button type="button" className="btn btn-small" onClick={restart}>Start over</button>
         </div>
       )}
+      </div>}
+    </section>
+  );
+}
+
+/** 13.0: today's passages from every plan in one list, grouped by plan. */
+function TodayList({ plans, bible, onChanged, dialog }) {
+  const today = todayStr();
+  const withToday = plans.filter((p) => p.status === 'active' && p.today?.items.length);
+  const all = withToday.flatMap((p) => p.today.items);
+  const read = all.filter((x) => x.read).length;
+  const tick = async (p, item, value) => {
+    try { await api.setPlanRead(p.id, { day: p.today.day, ...(item == null ? {} : { item }), read: value, today }); } catch (e) { dialog.toast(e.message, 'error'); }
+    onChanged();
+  };
+  return (
+    <section className="plans-today" aria-labelledby="plans-today-h">
+      <header className="plans-today-head">
+        <h2 id="plans-today-h">Today</h2>
+        {all.length > 0 && <span className="plans-today-count">{read} of {all.length} read</span>}
+        {all.length > 0 && <span className="rt-progress"><span style={{ width: `${(read / all.length) * 100}%` }} /></span>}
+      </header>
+      {!withToday.length && <p className="muted">No readings today. Enjoy the rest, or catch up below.</p>}
+      {withToday.map((p) => {
+        const done = p.today.items.every((x) => x.read);
+        return (
+          <div key={p.id} className={`plans-today-group ${done ? 'is-done' : ''}`}>
+            <div className="plans-today-plan">
+              <span>{p.title} · day {p.today.day + 1}</span>
+              {!done && <button type="button" className="link-btn" onClick={() => tick(p, null, true)}>Mark all read</button>}
+            </div>
+            <ul className="rplan-passages">{p.today.items.map((x) => <PlanPassage key={x.i} item={x} bible={bible} onToggle={(v) => tick(p, x.i, v)} />)}</ul>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -221,6 +256,8 @@ export default function PlansPage({ onOpenNote, onMenu, onSection }) {
   };
   const active = (plans ?? []).filter((p) => p.status !== 'archived');
   const read = active.flatMap((p) => p.today?.items ?? []);
+  const [openIds, setOpenIds] = useStoredState('noteapp.plans.open', []);
+  const toggleOpen = (id) => setOpenIds(openIds.includes(id) ? openIds.filter((x) => x !== id) : [...openIds, id]);
 
   return (
     <div className="page dw-page plans-page" onClick={openRefClick}>
@@ -253,7 +290,9 @@ export default function PlansPage({ onOpenNote, onMenu, onSection }) {
           </div>
         </section>
       )}
-      {active.map((p) => <PlanCard key={p.id} plan={p} bible={bible} dialog={dialog} onChanged={load} />)}
+      {active.length > 0 && <TodayList plans={active} bible={bible} dialog={dialog} onChanged={load} />}
+      {active.length > 0 && <h2 className="plans-yours">Your plans</h2>}
+      {active.map((p) => <PlanCard key={p.id} plan={p} bible={bible} dialog={dialog} onChanged={load} open={openIds.includes(p.id)} onToggle={() => toggleOpen(p.id)} />)}
     </div>
   );
 }

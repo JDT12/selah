@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { needsFullApp } from '../device.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { useDialog } from './Dialogs.jsx';
@@ -707,6 +708,7 @@ export const openLessonBuilder = (dialog, noteId) => openBuilderPage(noteId, 'le
  * for lessons applies, else the picker asks. Resolves the note's id (null when cancelled).
  */
 export async function writeLesson(dialog, itemId, openNote, studyId = null) {
+  if (needsFullApp(dialog)) return null;
   try {
     const method = await chooseMethod(dialog, 'lesson', { studyId });
     if (method == null) return null;

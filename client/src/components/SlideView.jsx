@@ -239,7 +239,7 @@ export function useSlideControl(noteId, deck, passages, meta = {}) {
       const m = e.detail;
       if (m?.slides !== 'cmd' || m.note !== noteId) return;
       if (m.cmd === 'black') setBlack((b) => !b);
-      else { setBlack(false); (m.cmd === 'next' ? nav.current.next : nav.current.prev)(); }
+      else if (m.cmd === 'next' || m.cmd === 'prev') { setBlack(false); (m.cmd === 'next' ? nav.current.next : nav.current.prev)(); }
     };
     window.addEventListener('noteapp:slides', onCmd);
     return () => {

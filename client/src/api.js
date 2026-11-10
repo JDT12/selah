@@ -11,7 +11,8 @@ export async function request(method, url, body, retried = false) {
     opts.headers['Content-Type'] = 'application/json';
     opts.body = JSON.stringify(body);
   }
-  const res = await fetch(url, opts);
+  // No connection: marked so a capture can wait on the device instead (captureSave.js).
+  const res = await fetch(url, opts).catch((e) => { throw Object.assign(e, { offline: true }); });
   if (res.status === 401 && !/^\/api\/(login|password|security\/confirm)/.test(url)) {
     window.dispatchEvent(new Event('noteapp:unauthorized'));
   }
@@ -35,7 +36,7 @@ function xhrUpload(url, formData, onProgress) {
       if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
       else reject(new Error(xhr.response?.error || `Upload failed (${xhr.status})`));
     };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.onerror = () => reject(Object.assign(new Error('Network error during upload'), { offline: true }));
     xhr.send(formData);
   });
 }
@@ -132,10 +133,21 @@ export const api = {
   deleteDailyWalkBook: (id) => request('DELETE', `/api/daily-walk/books/${id}`),
   dailyWalkJournal: (date, notebookId) => request('POST', '/api/daily-walk/journal', { date, notebook_id: notebookId }),
   setPrayed: (body) => request('PUT', '/api/daily-walk/prayed', body),
+  // 13.0: the Daily Walk routine
+  routine: (date, today) => request('GET', `/api/routine${qs({ date, today })}`),
+  addRoutineItem: (body) => request('POST', '/api/routine/items', body),
+  updateRoutineItem: (id, body) => request('PATCH', `/api/routine/items/${id}`, body),
+  deleteRoutineItem: (id) => request('DELETE', `/api/routine/items/${id}`),
+  orderRoutine: (ids) => request('PUT', '/api/routine/order', { ids }),
+  markRoutine: (body) => request('PUT', '/api/routine/mark', body),
+  routineJournal: (body) => request('POST', '/api/routine/journal', body),
+  setRoutineReminder: (time) => request('PUT', '/api/routine/reminder', { time }),
+  markDevotional: (body) => request('PUT', '/api/routine/devotional', body),
   // 11.0: attendance (Plan → Attendance)
   attendance: () => request('GET', '/api/attendance'),
   attendanceEvents: () => request('GET', '/api/attendance/events'),
   attendanceGroup: (id) => request('GET', `/api/attendance/groups/${id}`),
+  noteAttendance: (noteId) => request('GET', `/api/notes/${noteId}/attendance`),
   createAttendanceGroup: (body) => request('POST', '/api/attendance/groups', body),
   updateAttendanceGroup: (id, patch) => request('PATCH', `/api/attendance/groups/${id}`, patch),
   deleteAttendanceGroup: (id) => request('DELETE', `/api/attendance/groups/${id}`),
@@ -290,6 +302,8 @@ export const api = {
   removeSermon: (id) => request('DELETE', `/api/sermons/${id}`),
   noteSermon: (noteId) => request('GET', `/api/notes/${noteId}/sermon`),
   slides: (noteId) => request('GET', `/api/notes/${noteId}/slides`),
+  noteInk: (noteId) => request('GET', `/api/notes/${noteId}/ink`),
+  saveNoteInk: (noteId, strokes) => request('PUT', `/api/notes/${noteId}/ink`, { strokes }),
   // Export for iPad (12.2): block ids, the last export, the package (as a file, or into the Desktop export folder).
   blockIds: (noteId) => request('POST', `/api/notes/${noteId}/block-ids`),
   ipadExportInfo: (noteId) => request('GET', `/api/notes/${noteId}/ipad-export`),
@@ -342,7 +356,18 @@ export const api = {
   archivePreview: (noteId, { weeks = true, clean = true } = {}) => request('GET', `/api/studies/archive/preview/${noteId}${qs({ weeks: weeks ? undefined : 0, clean: clean ? undefined : 0 })}`),
   archiveClasses: (classes) => request('POST', '/api/studies/archive', { classes }),
   capture: (body) => request('POST', '/api/capture', body),
+  pushStatus: (platform) => request('GET', `/api/push/status?platform=${encodeURIComponent(platform)}`),
+  pushDevice: (body) => request('PUT', '/api/push/device', body),
+  forgetPushDevice: (token) => request('DELETE', '/api/push/device', { token }),
   claimShare: (token) => request('POST', `/api/share/${token}/claim`),
+  /** 13.0: something shared to the app from another app's share menu: { title, text, files: [File] } -> { id, title }. */
+  share({ title = '', text = '', files = [] }) {
+    const fd = new FormData();
+    fd.append('title', title);
+    fd.append('text', text);
+    for (const f of files) fd.append('file', f, f.name);
+    return xhrUpload('/api/share', fd);
+  },
   clipPairing: () => request('POST', '/api/clip/pairing'),
   clipInfo: () => request('GET', '/api/clip/info'),
   clipBank: (body) => request('POST', '/api/clip/bank', body),
@@ -356,6 +381,7 @@ export const api = {
   snapshotNote: (id, reason) => request('POST', `/api/notes/${id}/versions`, { reason }),
   restoreVersion: (id, vid) => request('POST', `/api/notes/${id}/versions/${vid}/restore`),
   createNote: (notebook_id) => request('POST', '/api/notes', { notebook_id, html: '<p></p>' }),
+  createNoteWith: (notebook_id, { title = '', html = '<p></p>' } = {}) => request('POST', '/api/notes', { notebook_id, title, html }),
   updateNote: (id, patch, keepalive = false) =>
     keepalive
       ? fetch(`/api/notes/${id}`, {

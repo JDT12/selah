@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { device } from '../device.js';
 import Icon from './Icon.jsx';
 import { api } from '../api.js';
 import { useDialog } from './Dialogs.jsx';
@@ -100,10 +101,10 @@ export default function WorkList({ tab, rows, mode = 'desk', onMarkDone, onDelet
 
   const open = (r, e) => openRow(r, { newTab: !!(e && (e.ctrlKey || e.metaKey || e.button === 1)) });
   const menu = (r) => [
-    { label: r.plan ? 'Open' : 'Open in its builder', onClick: () => open(r) },
+    { label: r.plan || !device.full ? 'Open' : 'Open in its builder', onClick: () => open(r) },
     r.plan && { label: 'Open in new tab', onClick: () => openRow(r, { newTab: true }) },
-    !r.plan && { label: 'Open the note', onClick: () => window.dispatchEvent(new CustomEvent('noteapp:open-note', { detail: r.note_id })) },
-    !r.plan && { label: 'Open the note in a new tab', onClick: () => window.dispatchEvent(new CustomEvent('noteapp:open-tab', { detail: { kind: 'note', id: r.note_id, title: r.title } })) },
+    device.full && !r.plan && { label: 'Open the note', onClick: () => window.dispatchEvent(new CustomEvent('noteapp:open-note', { detail: r.note_id })) },
+    device.full && !r.plan && { label: 'Open the note in a new tab', onClick: () => window.dispatchEvent(new CustomEvent('noteapp:open-tab', { detail: { kind: 'note', id: r.note_id, title: r.title } })) },
     onMarkDone && 'sep',
     onMarkDone && { label: r.done ? 'Mark not done' : 'Mark done', onClick: () => onMarkDone(r, !r.done) },
     onDelete && 'sep',

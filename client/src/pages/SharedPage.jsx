@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { device } from '../device.js';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { api, formatDate, formatSize } from '../api.js';
 import { buildExtensions } from '../editor/extensions.js';
@@ -231,7 +232,7 @@ function SharedNote({ share, noteKey, onCopy }) {
           </div>
           <CommentThreads threads={threads} side="in" editor={editor} current={current} setCurrent={setCurrent}
             onChanged={(r) => { if (r?.threads) { setNote((n) => ({ ...n, threads: r.threads })); setSelection(null); window.getSelection()?.removeAllRanges(); } else load(); }}
-            share={share.id} noteKey={noteKey} selection={selection} canComment={share.allowComments} ownerName={share.ownerName} />
+            share={share.id} noteKey={noteKey} selection={selection} canComment={share.allowComments && !device.phone} ownerName={share.ownerName} />
         </aside>
       )}
     </div>

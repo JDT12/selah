@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { device, workIsReadOnlyHere } from '../device.js';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { api, fileUrl, formatSize } from '../api.js';
@@ -99,7 +100,9 @@ function LoadedNote({
   // Read-only: a note can open locked (read_only), and the lock button switches it for this visit.
   const [locked, setLocked] = useState(!!note.read_only);
   const [lockDefault, setLockDefault] = useState(!!note.read_only);
-  const viewOnly = readOnly || locked;
+  // 13.0: a sermon, lesson, study or piece of writing this device only reads (set once we know what the note is).
+  const [deviceLocked, setDeviceLocked] = useState(false);
+  const viewOnly = readOnly || locked || deviceLocked;
   const lockedRef = useRef(viewOnly);
   lockedRef.current = viewOnly;
   const [title, setTitle] = useState(note.title);
@@ -445,6 +448,7 @@ function LoadedNote({
   const lessonBuilder = fromStudies.workflow === 'lesson' && !sermon && !bibleStudy && lessonLayout;
   // A sermon, Bible study or lesson (or a note in a teaching, preaching or writing study): one a builder works on.
   const builderNote = !!(sermon || bibleStudy || lessonLayout || fromStudies.workflow);
+  useEffect(() => setDeviceLocked(workIsReadOnlyHere({ sermon, bibleStudy, lesson: lessonLayout, workflow: fromStudies.workflow })), [sermon, bibleStudy, lessonLayout, fromStudies.workflow]);
   const openLesson = async () => {
     await flush();
     await openLessonBuilder(dialog, note.id);
@@ -967,7 +971,7 @@ function LoadedNote({
         <div className="trash-banner">
           <span>This note is in the Trash.</span>
           <button className="btn btn-small" onClick={() => onRestore(note.id)}><Icon name="restore" size={14} /> Restore</button>
-          <button className="btn btn-small btn-danger" onClick={() => onDeleteForever(note.id)}>Delete forever</button>
+          {device.full && <button className="btn btn-small btn-danger" onClick={() => onDeleteForever(note.id)}>Delete forever</button>}
         </div>
       )}
 
@@ -992,24 +996,24 @@ function LoadedNote({
         )}
         {/* Tags and the chips after them: inline on a wide screen; on a phone, a second row that scrolls sideways (8.0). */}
         <div className="note-meta-strip">
-        <TagInput tags={tags} allTags={tree.tags} onChange={changeTags} disabled={readOnly} />
+        <TagInput tags={tags} allTags={tree.tags} onChange={changeTags} disabled={readOnly || deviceLocked} />
         {studies.map((st) => (
           <button key={st.id} type="button" className={`study-chip study-c-${st.color ?? 'blue'}`} title="Open the study"
             onClick={() => window.dispatchEvent(new CustomEvent('noteapp:show-study', { detail: st.id }))}>
             <Icon name="book" size={12} /> {st.title}
           </button>
         ))}
-        {sermon && !workType && (
+        {device.full && sermon && !workType && (
           <button type="button" className="study-chip sermon-chip" title="Open the sermon builder" onClick={openBuilder}>
             <Icon name="lectern" size={12} /> Sermon{sermon.preached ? ` · preached ${sermon.preached}×` : ''}
           </button>
         )}
-        {lessonBuilder && !workType && (
+        {device.full && lessonBuilder && !workType && (
           <button type="button" className="study-chip lesson-chip" title="Open the lesson builder" onClick={openLesson}>
             <Icon name="present" size={12} /> Lesson builder
           </button>
         )}
-        {bibleStudy && !workType && (
+        {device.full && bibleStudy && !workType && (
           <button type="button" className="study-chip bible-study-chip" title="Open the study builder" onClick={openStudy}>
             <Icon name="bible" size={12} /> Bible study{bibleStudy.passage ? ` · ${bibleStudy.passage}` : ''}
           </button>
@@ -1033,7 +1037,7 @@ function LoadedNote({
         )}
         </div>
         <span className="spacer" />
-        {wpPost && (
+        {device.full && wpPost && (
           <a className={`wp-badge is-${wpPost.status}`} href={wpPost.link} target="_blank" rel="noopener noreferrer"
             title={{
               publish: 'Published on WordPress',
@@ -1042,13 +1046,14 @@ function LoadedNote({
             <Icon name="globe" size={13} /> {{ publish: 'Published', future: 'Scheduled' }[wpPost.status] ?? 'Draft'}
           </a>
         )}
-        {!readOnly && (
+        {deviceLocked && !readOnly && <span className="lock-btn is-on is-device" title="Open this on the web or in Selah Desktop to edit it"><Icon name="lock" size={15} /><span>Read-only here</span></span>}
+        {!readOnly && !deviceLocked && (
           <button type="button" className={`lock-btn ${locked ? 'is-on' : ''}`} onClick={toggleLock} aria-pressed={locked}
             title={locked ? 'Read-only: click to edit' : 'Make read-only (just for reading)'}>
             <Icon name={locked ? 'lock' : 'unlock'} size={15} />{locked && <span>Read-only</span>}
           </button>
         )}
-        {!readOnly && <span className={`save-status is-${status}`}>{statusText}</span>}
+        {!readOnly && !deviceLocked && <span className={`save-status is-${status}`}>{statusText}</span>}
         {writingStudy && (
           <button className={`icon-btn ${showSources ? 'is-on' : ''}`} onClick={toggleSources} aria-pressed={showSources}
             aria-label="Sources" title={`Sources for “${writingStudy.title}”: your reading notes and the sources it cites`}>
@@ -1089,7 +1094,7 @@ function LoadedNote({
             !isTemplate && { label: pinned ? 'Unpin from top of the list' : 'Pin to top of the list', onClick: togglePin },
             !isTemplate && { label: onDashboard ? 'Remove from Home' : 'Pin to Home', onClick: toggleDashboard },
             { label: isTemplate ? 'Duplicate template' : 'Duplicate', onClick: () => copyNote(noteActions.duplicate) },
-            { label: isTemplate ? 'Stop using as template' : 'Make into template', onClick: toggleTemplate },
+            device.full && { label: isTemplate ? 'Stop using as template' : 'Make into template', onClick: toggleTemplate },
             !isTemplate && { label: 'Insert template…', onClick: insertTemplate },
             { label: 'Copy link to note', onClick: () => noteActions.copyLink(note) },
             hosted && !isTemplate && { label: sharedWith.length ? 'Sharing…' : 'Share…', onClick: shareNote },
@@ -1099,28 +1104,28 @@ function LoadedNote({
             { label: 'Version history…', onClick: showHistory },
             !isTemplate && { label: showRevise ? 'Close Revise' : 'Revise…', onClick: toggleRevise },
             // Present, Preach/Teach and the builders are for sermons, lessons and studies; an ordinary note doesn't list them.
-            builderNote && { label: 'Present', onClick: async () => { await flush(); presentNote(dialog, note.id); } },
+            !device.phone && builderNote && { label: 'Present', onClick: async () => { await flush(); presentNote(dialog, note.id); } },
             builderNote && (lessonLayout && !sermon ? { label: 'Teach', onClick: async () => { await flush(); await teachNote(dialog, note.id); } }
               : { label: 'Preach', onClick: async () => { await flush(); await preachNote(dialog, note.id); api.noteSermon(note.id).then(setSermon).catch(() => {}); } }),
-            !isTemplate && (sermon || lessonLayout) && { label: 'Slides…', onClick: async () => { await flush(); openSlides(dialog, note.id); } },
-            !isTemplate && sermon && { label: 'Sermon builder…', onClick: openBuilder },
-            !isTemplate && bibleStudy && { label: 'Study builder…', onClick: openStudy },
-            lessonBuilder && { label: 'Lesson builder…', onClick: openLesson },
-            !isTemplate && !viewOnly && canSwitch && { label: 'Switch method…', onClick: switchMethod },
-            { label: 'Print handout…', onClick: async () => { await flush(); printHandout(dialog, note.id); } },
-            { label: 'Export…', onClick: exportNote },
-            !isTemplate && { label: 'Split into notes…', onClick: splitNote },
+            !device.phone && !isTemplate && (sermon || lessonLayout) && { label: 'Slides…', onClick: async () => { await flush(); openSlides(dialog, note.id); } },
+            device.full && !isTemplate && sermon && { label: 'Sermon builder…', onClick: openBuilder },
+            device.full && !isTemplate && bibleStudy && { label: 'Study builder…', onClick: openStudy },
+            device.full && lessonBuilder && { label: 'Lesson builder…', onClick: openLesson },
+            device.full && !isTemplate && !viewOnly && canSwitch && { label: 'Switch method…', onClick: switchMethod },
+            device.full && { label: 'Print handout…', onClick: async () => { await flush(); printHandout(dialog, note.id); } },
+            device.full && { label: 'Export…', onClick: exportNote },
+            device.full && !isTemplate && { label: 'Split into notes…', onClick: splitNote },
             { label: 'Focus mode', onClick: () => setFocus(true) },
             { label: lockDefault ? '✓ Always open read-only' : 'Always open read-only', onClick: toggleLockDefault },
             !isTemplate && { label: 'Add to prayer list…', onClick: addToPrayer },
             !isTemplate && { label: 'Add to sermon bank…', onClick: addToBank },
-            { label: 'Attach file…', onClick: pickFile },
+            !deviceLocked && { label: 'Attach file…', onClick: pickFile },
             'sep',
-            { label: wpPost ? 'Update WordPress post…' : 'Post to WordPress…', onClick: postToWordPress },
-            wpPost && { label: 'Open WordPress post', onClick: () => window.open(wpPost.link, '_blank', 'noopener,noreferrer') },
-            wpPost && { label: 'Delete WordPress post…', danger: true, onClick: deleteWordPressPost },
+            device.full && { label: wpPost ? 'Update WordPress post…' : 'Post to WordPress…', onClick: postToWordPress },
+            device.full && wpPost && { label: 'Open WordPress post', onClick: () => window.open(wpPost.link, '_blank', 'noopener,noreferrer') },
+            device.full && wpPost && { label: 'Delete WordPress post…', danger: true, onClick: deleteWordPressPost },
             'sep',
-            { label: 'Move to Trash', danger: true, onClick: () => onTrash(note.id) },
+            !deviceLocked && { label: 'Move to Trash', danger: true, onClick: () => onTrash(note.id) },
           ]} />
         )}
         {peek && <button className="icon-btn" onClick={peek.onClose} aria-label="Close" title="Close (Esc)"><Icon name="x" /></button>}
@@ -1156,13 +1161,18 @@ function LoadedNote({
             <div className="work-top">
               <span className="work-eyebrow">{WORK_LABEL[workType]}{workMethod ? ` · ${workMethod.name}` : ''}</span>
               <span className="spacer" />
-              {(workType === 'sermon' || bibleStudy || lessonBuilder) && !isTemplate && (
+              {device.full && (workType === 'sermon' || bibleStudy || lessonBuilder) && !isTemplate && (
                 <button type="button" className={`btn work-builder ${workType === 'study' ? 'is-main' : ''}`}
                   onClick={workType === 'sermon' ? openBuilder : workType === 'study' ? openStudy : openLesson}>
                   {{ sermon: 'Sermon builder', study: 'Study builder', lesson: 'Lesson builder' }[workType]}
                 </button>
               )}
-              {workType !== 'study' && !isTemplate && (
+              {device.tablet && workType !== 'study' && !isTemplate && (
+                <button type="button" className="btn" onClick={async () => { await flush(); openSlides(dialog, note.id); }}>
+                  <Icon name="present" size={12} /> Slides
+                </button>
+              )}
+              {!device.phone && workType !== 'study' && !isTemplate && (
                 <button type="button" className="btn work-go" onClick={async () => {
                   await flush();
                   if (workType === 'sermon') { await preachNote(dialog, note.id); api.noteSermon(note.id).then(setSermon).catch(() => {}); } else await teachNote(dialog, note.id);

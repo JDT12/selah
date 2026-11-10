@@ -286,13 +286,27 @@ export function entryKey(book, day) {
   return n >= 1 && n <= book.length ? `#${n}` : null;
 }
 
+/** 13.0: one devotional's reading on a day, for the routine: { book, entry | null, note, read }. */
+export function bookReading(bookId, day) {
+  const b = db.prepare('SELECT * FROM dw_books WHERE id = ?').get(bookId);
+  if (!b) return null;
+  const key = entryKey(b, day);
+  const e = key && db.prepare('SELECT title, html, prompt, num FROM dw_entries WHERE book_id = ? AND mmdd = ?').get(b.id, key);
+  const read = !!db.prepare('SELECT 1 FROM dw_reads WHERE source = ? AND day = ?').get(`book:${b.id}`, day);
+  return { book: { id: b.id, title: b.title, author: b.author, length: b.length }, entry: e ?? null, note: e ? null : offDayNote(b, day), read };
+}
+export function setBookRead(bookId, day, read) {
+  if (read) db.prepare('INSERT INTO dw_reads (source, day, read_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING').run(`book:${bookId}`, day, Date.now());
+  else db.prepare('DELETE FROM dw_reads WHERE source = ? AND day = ?').run(`book:${bookId}`, day);
+}
+
 /** Why a book has nothing on a day, for the page. */
 function offDayNote(book, day) {
   const weekdays = book.schedule === 'weekdays' || book.schedule === 'weekdays-year';
   if (book.schedule === 'daily' || book.schedule === 'weekdays') {
     if (day < book.start_day) return `This book starts on ${longDate(book.start_day)}.`;
     if (weekdays && !isWeekday(day)) return 'This book is read on weekdays, so there’s no reading today.';
-    return `You’ve come to the end of this book (${book.length} days). Start it again under Books, or disconnect it to make room for another.`;
+    return `You’ve come to the end of this book (${book.length} days).`;
   }
   if (weekdays && !isWeekday(day)) return 'This book is read on weekdays, so there’s no reading today.';
   if (book.schedule === 'weekdays-year') return `This book has ${book.length} weekday readings, and this year has more weekdays than that.`;
@@ -397,7 +411,7 @@ export function stats(today) {
 // 10.1: journal notes go to My notes (tagged Devotions), since notebooks are no longer shown.
 const journalNotebook = () => myNotesId();
 
-function createJournal(day, notebookId) {
+export function createJournal(day, notebookId) {
   const existing = db.prepare(`SELECT j.note_id FROM dw_journal j JOIN notes n ON n.id = j.note_id
     WHERE j.day = ? AND n.deleted_at IS NULL`).get(day);
   if (existing) return { id: existing.note_id, existed: true };

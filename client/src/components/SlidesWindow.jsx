@@ -12,6 +12,8 @@ import { CHANNEL, SlideView, rememberWindow, usePassages } from './SlideView.jsx
  * the keys here move the presentation along. With nothing presenting it, it steps through the deck by itself.
  */
 const SAME_BROWSER = 30_000; // a direct message this recent means the controller is in this browser
+// 13.0: on a TV from the iPad app (?tv=1): the audience's view only, never the bar.
+const ON_TV = new URLSearchParams(location.search).has('tv');
 
 export default function SlidesWindow({ noteId: fixed = null }) {
   const [noteId, setNoteId] = useState(fixed);
@@ -115,6 +117,7 @@ export default function SlidesWindow({ noteId: fixed = null }) {
 
   const timer = useRef(null);
   const wake = () => {
+    if (ON_TV) { setChrome(false); return; }
     setChrome(true);
     clearTimeout(timer.current);
     timer.current = setTimeout(() => setChrome(false), 2500);
@@ -137,11 +140,11 @@ export default function SlidesWindow({ noteId: fixed = null }) {
     <div className={`slides-window slides-${deck.theme} ${chrome ? '' : 'is-quiet'}`} onMouseMove={wake}
       onClick={(e) => { if (!e.target.closest('.slides-window-bar')) move(e.clientX > window.innerWidth / 3 ? 1 : -1); }}>
       <SlideView slide={s} step={at.step} deck={deck} passages={passages} fit black={black} className="is-screen" />
-      <div className="slides-window-bar" role="toolbar" aria-label="Slides">
+      {!ON_TV && <div className="slides-window-bar" role="toolbar" aria-label="Slides">
         <span>{at.index + 1} / {slides.length}</span>
         <span className="slides-window-state">{driven ? 'Following Selah' : 'On its own'}</span>
         <button type="button" onClick={full}>{document.fullscreenElement ? 'Leave full screen' : 'Full screen (F)'}</button>
-      </div>
+      </div>}
     </div>
   );
 }

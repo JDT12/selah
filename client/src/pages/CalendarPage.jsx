@@ -198,7 +198,7 @@ export default function CalendarPage({ onOpenNote, onMenu, onTasksChanged, onAll
           datesSet={(arg) => setView(arg.view.type)}
           headerToolbar={narrow
             ? { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridDay,listWeek' }
-            : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}
+            : { left: 'title', center: '', right: 'today prev,next dayGridMonth,timeGridWeek,timeGridDay,listMonth' }}
           buttonText={{ today: 'Today', month: 'Month', week: 'Week', day: 'Day', list: 'Agenda' }}
           timeZone="UTC"
           now={() => nowParts().iso}
@@ -211,9 +211,12 @@ export default function CalendarPage({ onOpenNote, onMenu, onTasksChanged, onAll
           dayMaxEvents={4}
           scrollTime="07:00:00"
           slotDuration="00:30:00"
+          eventMinHeight={24}
+          eventShortHeight={32}
           eventTimeFormat={{ hour: 'numeric', minute: '2-digit', meridiem: 'short' }}
           events={fetchEvents}
           eventContent={renderContent}
+          eventDidMount={(arg) => arg.el.style.setProperty('--ev', arg.backgroundColor)}
           eventClick={onClick}
           eventDrop={onMove}
           eventResize={onMove}

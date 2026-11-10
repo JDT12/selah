@@ -240,6 +240,10 @@ export function NewPlanDialog({ close, initial = null }) {
         <h2>{built ? built.title : step === 'build' ? 'Build a Plan' : step === 'import' ? 'Import a Plan' : 'New Reading Plan'}</h2>
         <button className="icon-btn" onClick={() => close(null)} aria-label="Close" title="Close"><Icon name="x" /></button>
       </div>
+      <ol className="rplan-steps" aria-label="Steps">
+        {['Choose', 'Set it up', 'Start'].map((l, i) => <li key={l} className={(step ? 1 : 0) >= i ? 'is-on' : ''}><span>{i + 1}</span>{l}</li>)}
+      </ol>
+      {!step && <h3 className="rplan-group">Ready-made plans</h3>}
       {!step && (
         <div className="rplan-picks">
           {(catalog ?? []).map((p) => (
@@ -249,6 +253,11 @@ export function NewPlanDialog({ close, initial = null }) {
               <span className="rplan-pick-meta">{plural(p.days, 'day')} · about {p.perDay} a day</span>
             </button>
           ))}
+        </div>
+      )}
+      {!step && <h3 className="rplan-group">Your own</h3>}
+      {!step && (
+        <div className="rplan-picks is-own">
           <button type="button" className="rplan-pick" onClick={() => setStep('build')}>
             <span className="rplan-pick-title"><Icon name="plus" size={16} /> Build your own</span>
             <span className="rplan-pick-about">Pick the books, then how fast: a number of days, chapters a day, or a date to finish by.</span>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { canOpenSection, device, deviceHiddenPages } from '../device.js';
 import Icon from './Icon.jsx';
 import { pageLinkProps, pageTabItems } from '../openTab.js';
 import { useDialog } from './Dialogs.jsx';
@@ -70,7 +71,7 @@ export default function Sidebar({
   const [focusHidden] = useFocusPages();
   const [panel, setPanel] = useState(null); // 'utility'
   // What the rail leaves out right now: your hidden pages, and in focus mode its pages too.
-  const out = focus ? [...hidden, ...focusHidden] : hidden;
+  const out = [...(focus ? [...hidden, ...focusHidden] : hidden), ...deviceHiddenPages()];
   const actions = useNotebookActions({ tree, onRefresh, onCreated: () => {}, onDeleted: () => {} });
   const tagActions = useTagActions({
     tags: tree.tags, notebookActions: actions, onRefresh: () => { onRefresh(); onNotesChanged?.(); },
@@ -109,8 +110,14 @@ export default function Sidebar({
   const withUtility = !out.includes('utility');
   const myNotesDrop = useDropTarget(['application/x-note'], (_, noteId) => { if (tree.myNotes) onMoveNote(noteId, tree.myNotes); });
 
+  const handwritten = (paper) => window.dispatchEvent(new CustomEvent('noteapp:new-handwritten', { detail: { paper } }));
+  const capture = (start = null) => window.dispatchEvent(new CustomEvent('noteapp:capture', { detail: start }));
   const newMenu = [
+    { label: 'Quick capture', onClick: () => capture() },
+    'sep',
     { label: 'New note', onClick: () => onNewNote() },
+    { label: 'New handwritten note', onClick: () => handwritten('lined') },
+    { label: 'New Cornell notes by hand', onClick: () => handwritten('cornell') },
     { label: 'New note from template…', onClick: () => onNewFromTemplate() },
   ];
   const openAt = (e, items, beside = true) => {
@@ -118,14 +125,14 @@ export default function Sidebar({
     const at = beside && !phone ? { clientX: r.right + 8, clientY: r.top } : { clientX: r.left, clientY: r.top - 4 };
     dialog.contextMenu({ ...at, preventDefault() {}, stopPropagation() {} }, items);
   };
-  const allPages = orderedPageKeys(order).filter((k) => k !== 'wordpress' || tree.wordpress);
+  const allPages = orderedPageKeys(order).filter((k) => canOpenSection(k) && (k !== 'wordpress' || tree.wordpress));
   // The pages that aren't on the rail: still a right-click (or Ctrl+K) away, and under More on a phone.
   const offRail = [
     ...allPages.filter((k) => !pageKeys.includes(k)).map((k) => ({ label: label(k), onClick: () => go(k) })),
     !withMyNotes && { label: 'My notes', onClick: openMyNotes },
   ].filter(Boolean);
   // The rail's right-click menu: the pages you took off it, then Customize.
-  const railMenu = (e) => dialog.contextMenu(e, [...offRail, offRail.length > 0 && 'sep', { label: 'Customize the rail…', onClick: customize }].filter(Boolean));
+  const railMenu = (e) => dialog.contextMenu(e, [...offRail, offRail.length > 0 && 'sep', device.full && { label: 'Customize the rail…', onClick: customize }].filter(Boolean));
   const onRailMenu = (e) => { e.preventDefault(); e.stopPropagation(); railMenu(e); };
   const toggleUtility = () => setPanel((cur) => (cur ? null : 'utility'));
 
@@ -134,7 +141,7 @@ export default function Sidebar({
     return (
       <button key={k} type="button" className={`nr-item ${isActive(k) && !panel ? 'is-active' : ''}`} {...pageLinkProps({ section: k }, () => go(k === 'dashboard' ? homeTo : k))}
         aria-current={isActive(k) ? 'page' : undefined} title={label(k)}
-        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); dialog.contextMenu(e, [...pageTabItems({ section: k }), 'sep', ...offRail, offRail.length > 0 && 'sep', { label: 'Customize the rail…', onClick: customize }].filter(Boolean)); }}>
+        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); dialog.contextMenu(e, [...pageTabItems({ section: k }), 'sep', ...offRail, offRail.length > 0 && 'sep', device.full && { label: 'Customize the rail…', onClick: customize }].filter(Boolean)); }}>
         <span className="nr-icon"><Icon name={PAGE[k].icon} size={20} strokeWidth={1.8} />{n > 0 && <span className={`nr-badge ${k === 'calendar' ? 'is-urgent' : ''}`}>{n > 99 ? '99+' : n}</span>}</span>
         <span className="nr-label">{short(k)}</span>
       </button>
@@ -153,7 +160,7 @@ export default function Sidebar({
         { label: 'New note from template…', onClick: () => onNewFromTemplate() },
         'sep',
         ...offRail, offRail.length > 0 && 'sep',
-        { label: 'Customize the rail…', onClick: customize },
+        device.full && { label: 'Customize the rail…', onClick: customize },
       ].filter(Boolean)); }}>
       <span className="nr-icon"><Icon name="notes" size={20} strokeWidth={1.8} /></span><span className="nr-label">My notes</span>
     </button>
@@ -187,17 +194,18 @@ export default function Sidebar({
               <span className="ar-icon"><Icon name={PAGE[k].icon} size={21} strokeWidth={1.8} />{badge(k) > 0 && <span className={`ar-badge ${k === 'calendar' ? 'is-urgent' : ''}`}>{badge(k) > 99 ? '99+' : badge(k)}</span>}</span><span>{short(k)}</span>
             </button>
           ))}
-          <button type="button" className="ar-tab ar-tab-new" onClick={() => onNewNote()} aria-label="New note"><span><Icon name="plus" size={22} /></span></button>
+          <button type="button" className="ar-tab ar-tab-new" onClick={(e) => openAt(e, [{ label: 'Quick capture', onClick: () => capture() }, { label: 'Photo to text', onClick: () => capture('photo') }, 'sep', { label: 'Note', onClick: () => onNewNote() }, { label: 'Handwritten note', onClick: () => handwritten('lined') }], false)} aria-label="New"><span><Icon name="plus" size={22} /></span></button>
           <button type="button" className={`ar-tab ${myNotesActive ? 'is-active' : ''}`} onClick={openMyNotes} aria-label="My notes">
             <span className="ar-icon"><Icon name="notes" size={21} strokeWidth={1.8} /></span><span>My notes</span>
           </button>
           <button type="button" className="ar-tab" aria-label="More" onClick={(e) => openAt(e, [
             ...pageKeys.filter((k) => !tabs.includes(k)).map((k) => ({ label: label(k), onClick: () => go(k === 'dashboard' ? homeTo : k) })),
-            withUtility && { label: 'Utility: templates, attachments, tags, Trash', onClick: () => setPanel('utility') },
+            withUtility && { label: 'Utility', onClick: () => setPanel('utility') },
+            device.phone && { label: 'Remote', onClick: () => window.dispatchEvent(new Event('noteapp:open-remote')) },
             offRail.length > 0 && 'sep',
             ...offRail,
             'sep',
-            { label: focus ? 'Leave focus mode' : 'Focus mode', onClick: toggleFocus },
+            { label: focus ? 'Leave Focus Mode' : 'Focus Mode', onClick: toggleFocus },
             { label: 'Refresh', onClick: onRefreshAll },
             { label: 'Settings', onClick: onSettings },
           ].filter(Boolean), false)}>

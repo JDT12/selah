@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { device } from '../device.js';
 import Icon from './Icon.jsx';
 import { Menu, useDialog } from './Dialogs.jsx';
 import { api } from '../api.js';
@@ -284,7 +285,7 @@ export default function CourseView({ id, tree, onBack, backLabel = 'Teach', onOp
                 <li key={w.id} className={`course-week ${w.done ? 'is-done' : ''} ${w.id === c.next ? 'is-next' : ''} ${w.recap ? 'is-recap' : ''}`} onContextMenu={(e) => dialog.contextMenu(e, weekMenu(w))}>
                   <span className="course-week-n">{w.week}</span>
                   <div className="course-week-main">
-                    <button type="button" className="course-week-title" onClick={() => (w.lesson ? lesson(w) : editWeek(w))}>{w.lesson?.title ?? w.title}</button>
+                    <button type="button" className="course-week-title" disabled={!device.full && !w.lesson} onClick={() => (w.lesson ? lesson(w) : editWeek(w))}>{w.lesson?.title ?? w.title}</button>
                     <span className="course-week-meta">
                       {w.date && <span className={late ? 'is-late' : ''}>{relativeDay(w.date)}</span>}
                       {w.ref && !(w.lesson?.title ?? w.title).includes(w.ref) && <span>{w.ref}</span>}
@@ -346,7 +347,7 @@ function UpNext({ w, t, action, useStudy, openStudy, lesson, reflect, present })
         ))}
       </ol>
       {say && <p className="course-next-say">{say}</p>}
-      {w.study && <p className="muted course-next-line"><Icon name="bible" size={13} /> Study: <button type="button" className="link-btn" onClick={() => openStudy(w)}>{w.study.title}</button>{w.study.keeper ? ` · “${w.study.keeper}”` : ''}</p>}
+      {w.study && <p className="muted course-next-line"><Icon name="bible" size={13} /> Study: <button type="button" className="link-btn" data-read="" onClick={() => openStudy(w)}>{w.study.title}</button>{w.study.keeper ? ` · “${w.study.keeper}”` : ''}</p>}
       {s.next === 'study' && w.suggested?.length > 0 && (
         <p className="muted course-next-line"><Icon name="bible" size={13} /> You’ve studied this passage before: <button type="button" className="link-btn" onClick={() => useStudy(w, w.suggested[0].note_id)}>use “{w.suggested[0].title}”</button></p>
       )}
@@ -360,8 +361,8 @@ function UpNext({ w, t, action, useStudy, openStudy, lesson, reflect, present })
       )}
       <div className="course-next-actions">
         {action(w, true)}
-        {w.lesson && s.next !== 'open' && <button type="button" className="btn" onClick={() => lesson(w)}><Icon name="present" size={14} /> Lesson</button>}
-        {w.lesson && <button type="button" className="btn" onClick={() => present(w)}><Icon name="play" size={14} /> Present</button>}
+        {w.lesson && s.next !== 'open' && <button type="button" className="btn" data-read="" onClick={() => lesson(w)}><Icon name="present" size={14} /> Lesson</button>}
+        {w.lesson && <button type="button" className="btn" data-read={device.tablet ? '' : undefined} onClick={() => present(w)}><Icon name="play" size={14} /> Present</button>}
         {w.done && w.reflection && <button type="button" className="btn" onClick={() => reflect(w)}><Icon name="pen" size={14} /> Notes</button>}
       </div>
     </section>

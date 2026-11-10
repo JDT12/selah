@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
+import { device } from '../device.js';
 import { api, formatSize } from '../api.js';
+import { RoutineList, useRoutine } from '../components/Routine.jsx';
+import { getTimeZone } from '../time.js';
 import { addDays, formatLongDate, formatShortDate, formatTime, relativeDay } from '../time.js';
 import { Menu, useDialog } from '../components/Dialogs.jsx';
 import EventDialog, { EVENT_COLORS } from '../components/EventDialog.jsx';
@@ -97,6 +100,11 @@ export default function HomePage({ tree, onOpenNote, onTasksChanged, onNotesChan
   const [status, setStatus] = useState(null);
   // 11.0: Home's own Study, Teach, Write and Learn tabs: the work still active, with Mark done.
   const [tab, setTab] = useStoredState('noteapp.homeTab', 'home');
+  useEffect(() => {
+    const home = () => setTab('home');
+    window.addEventListener('noteapp:home-tab', home);
+    return () => window.removeEventListener('noteapp:home-tab', home);
+  }, [setTab]);
   const [work, setWork] = useState(null);
   const [plans, setPlans] = useState(null);
   const [due, setDue] = useState(null);
@@ -176,10 +184,11 @@ export default function HomePage({ tree, onOpenNote, onTasksChanged, onNotesChan
         <button type="button" className="btn btn-primary home-new" onClick={open}><Icon name="plus" size={15} /> New</button>
       )} items={[
         { label: 'Note', onClick: () => onNewNote() },
+        { label: 'Handwritten note', onClick: () => window.dispatchEvent(new CustomEvent('noteapp:new-handwritten', { detail: { paper: 'lined' } })) },
         { label: 'Task', onClick: newTask },
         { label: 'Event', onClick: newEvent },
-        { label: 'Study…', onClick: () => startStudy(dialog) },
-        { label: 'Something on Desk…', onClick: () => onSection('desk') },
+        device.full && { label: 'Study…', onClick: () => startStudy(dialog) },
+        device.full && { label: 'Something on Desk…', onClick: () => onSection('desk') },
       ]} />
     </>
   );
@@ -212,7 +221,7 @@ export default function HomePage({ tree, onOpenNote, onTasksChanged, onNotesChan
         <div className="home-main">
           <TwoStepNudge />
 
-          {on('reading') && walk && <Reading walk={walk} onOpen={() => onSection('dailywalk')} />}
+          {on('reading') && <HomeRoutine onOpenWalk={() => onSection('dailywalk')} onOpenNote={onOpenNote} />}
 
           {on('plans') && <HomePlans onOpen={() => onSection('plans')} />}
 
@@ -313,6 +322,23 @@ function TaskBits({ task, onToggle, onOpen }) {
 }
 
 /** Today's Daily Walk: the reading waiting, or once it's read, a small check. */
+/** 13.0: today's Daily Walk routine, to tick from Home (the rest opens Walk). */
+function HomeRoutine({ onOpenWalk, onOpenNote }) {
+  const t = new Intl.DateTimeFormat('en-CA', { timeZone: getTimeZone() }).format(new Date());
+  const [data, load] = useRoutine(t, t);
+  if (!data || !data.items?.length) return null;
+  const done = data.items.filter((x) => x.done).length;
+  return (
+    <section className="home-routine" aria-label="Daily Walk">
+      <div className="home-routine-head">
+        <p className="home-eyebrow">Daily Walk{data.stats?.streak > 0 ? ` · ${data.stats.streak} day${data.stats.streak === 1 ? '' : 's'} in a row` : ''}</p>
+        <button type="button" className="link-btn" onClick={onOpenWalk}>{data.done ? 'All done' : `${done} of ${data.items.length} done`} <Icon name="chevronRight" size={12} /></button>
+      </div>
+      <RoutineList data={data} date={t} today={t} onChange={load} onOpenNote={onOpenNote} compact onOpenWalk={onOpenWalk} />
+    </section>
+  );
+}
+
 function Reading({ walk, onOpen }) {
   const sources = walk.sources ?? [];
   if (!sources.length) return null;
@@ -409,7 +435,7 @@ function VerseOfDay({ dialog, onOpenNote, onSettings }) {
           <div className="home-votd-foot">
             <div className="home-votd-cite"><Scripture as="span" text={ref} className="home-votd-ref" /><Credit passage={passage || null} className="home-votd-tl" /></div>
             <span className="home-votd-actions">
-              <button type="button" className="btn btn-small" onClick={() => startStudy(dialog, ref)} title="A Bible study of this passage"><Icon name="book" size={13} /> Study it</button>
+              {device.full && (<button type="button" className="btn btn-small" onClick={() => startStudy(dialog, ref)} title="A Bible study of this passage"><Icon name="book" size={13} /> Study it</button>)}
               <button type="button" className="btn btn-small" onClick={toNote} disabled={!passage} title="A new note in your Inbox with this verse"><Icon name="note" size={13} /> New note</button>
               <button type="button" className="icon-btn" onClick={copy} disabled={!passage} title="Copy the verse to paste into a note" aria-label="Copy the verse"><Icon name="copy" size={15} /></button>
             </span>
@@ -449,7 +475,7 @@ function NextUp({ desk, onOpen, onOpenItem, onDesk, dialog }) {
         <span className={`next-note ${x.ready === 'ready' ? 'is-ready' : ''}`}>{x.ready === 'ready' ? 'Ready' : x.ready === 'none' ? 'Not started' : preach ? 'Started' : `${done} of 4 steps written`}</span>,
         <>
           {open(() => onOpenItem(x))}
-          {x.note_id && (
+          {!device.phone && x.note_id && (
             <button type="button" className={`btn btn-small next-go ${preach ? 'is-preach' : ''}`} onClick={() => (preach ? preachNote : teachNote)(dialog, x.note_id)}>
               <Icon name="play" size={11} /> {preach ? 'Preach' : 'Teach'}
             </button>
@@ -563,10 +589,10 @@ function StatusLine({ status, onSettings }) {
   const { storage, offsite, host, auto } = status;
   const parts = [];
   let warn = false;
-  if (storage?.capacity) {
-    const pct = Math.round((storage.used / storage.capacity) * 100);
-    if (pct >= 90) warn = true;
-    parts.push(`${formatSize(storage.used)} of ${formatSize(storage.capacity)} used`);
+  // 13.0: space used is in Settings; Home only warns when it's nearly full.
+  if (storage?.capacity && storage.used / storage.capacity >= 0.9) {
+    warn = true;
+    parts.push(`Storage ${Math.round((storage.used / storage.capacity) * 100)}% full`);
   }
   if (host) {
     if (!host.ok) warn = true;

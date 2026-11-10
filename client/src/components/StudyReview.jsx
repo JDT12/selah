@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { needsFullApp } from '../device.js';
 import Icon from './Icon.jsx';
 import { api, formatDate } from '../api.js';
 import { useDialog } from './Dialogs.jsx';
@@ -20,6 +21,7 @@ const STEP_KEYS = ['summary', 'differences', 'principles', 'consistency', 'appli
 
 /** A new study (9.2: the New Study dialog, with the passage filled in when there is one). Resolves the note's id. */
 export async function startStudy(dialog, passage = '') {
+  if (needsFullApp(dialog)) return null;
   const { openNewStudy } = await import('./NewStudyDialog.jsx');
   return openNewStudy(dialog, { start: passage });
 }

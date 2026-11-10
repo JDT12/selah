@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { device } from '../device.js';
 import Icon from '../components/Icon.jsx';
 import { Menu, useDialog } from '../components/Dialogs.jsx';
 import { api } from '../api.js';
@@ -58,14 +59,14 @@ export default function SermonsPage({ tree, onPeekNote, onOpenScripture, onChang
   };
   const sermonMenu = (s) => [
     { label: 'Open the note', onClick: () => peek(s.note_id) },
-    { label: 'Sermon builder', onClick: () => build(s.note_id) },
+    device.full && { label: 'Sermon builder', onClick: () => build(s.note_id) },
     { label: 'Preach', onClick: () => preach(s.note_id) },
     { label: 'Log as preached…', onClick: () => logIt(s) },
     s.passage && { label: `Notes on ${s.passage}`, onClick: () => onOpenScripture(s.passage) },
     { label: s.status === 'ready' ? 'Mark as still building' : 'Mark ready to preach', onClick: async () => { await api.updateSermon(s.id, { status: s.status === 'ready' ? 'building' : 'ready' }); load(); } },
     s.study_id && { label: `Open the series “${s.series}”`, onClick: () => { showStudy(s.study_id); window.dispatchEvent(new CustomEvent('noteapp:show-section', { detail: 'desk' })); } },
     'sep',
-    { label: 'Take off the Sermons page…', danger: true, onClick: async () => {
+    device.full && { label: 'Take off the Sermons page…', danger: true, onClick: async () => {
       if (!(await dialog.confirm({ title: `Take “${s.title}” off the Sermons page?`, message: 'The note stays where it is. Its preached log and builder worksheet go.', okLabel: 'Take it off', danger: true }))) return;
       await api.removeSermon(s.id);
       load();
@@ -96,8 +97,8 @@ export default function SermonsPage({ tree, onPeekNote, onOpenScripture, onChang
           <p className="muted">{sermons ? `${plural(sermons.length, 'sermon')} · preached ${plural(yearCount, 'time')} in ${thisYear}` : 'Loading…'}</p>
         </div>
         <div className="page-actions">
-          <button className="btn" onClick={importLogos}><Icon name="import" size={15} /> Import from Logos…</button>
-          <button className="btn btn-primary" onClick={create}><Icon name="plus" size={15} /> New sermon</button>
+          {device.full && (<button className="btn" onClick={importLogos}><Icon name="import" size={15} /> Import from Logos…</button>)}
+          {device.full && (<button className="btn btn-primary" onClick={create}><Icon name="plus" size={15} /> New sermon</button>)}
         </div>
       </header>
 
@@ -109,7 +110,7 @@ export default function SermonsPage({ tree, onPeekNote, onOpenScripture, onChang
         ))}
       </div>
 
-      {tab === 'library' && sermons && !sermons.length && (
+      {device.full && tab === 'library' && sermons && !sermons.length && (
         <section className="studies-start">
           <h2>Start your sermon library</h2>
           <p className="muted">Build a sermon in twelve steps, from the text to the pulpit, or bring in the ones you wrote in Logos.</p>
@@ -153,7 +154,7 @@ export default function SermonsPage({ tree, onPeekNote, onOpenScripture, onChang
                   {s.last_preached && <span className="muted sermon-last">Last preached {longDate(s.last_preached)}{s.last_place ? ` at ${s.last_place}` : ''}</span>}
                 </button>
                 <span className="muted sermon-length" title="Length when preached at about 130 words a minute">~{s.minutes_est} min</span>
-                <button type="button" className="btn btn-small" onClick={() => build(s.note_id)} title="Open in the sermon builder"><Icon name="steps" size={14} /> Builder</button>
+                {device.full && (<button type="button" className="btn btn-small" onClick={() => build(s.note_id)} title="Open in the sermon builder"><Icon name="steps" size={14} /> Builder</button>)}
                 <button type="button" className="icon-btn" onClick={() => preach(s.note_id)} title="Preach" aria-label="Preach"><Icon name="play" size={16} /></button>
                 <Menu align="right" trigger={({ toggle }) => <button type="button" className="icon-btn" onClick={toggle} aria-label="More"><Icon name="more" size={16} /></button>} items={sermonMenu(s)} />
               </li>
@@ -168,7 +169,7 @@ export default function SermonsPage({ tree, onPeekNote, onOpenScripture, onChang
         <>
           <div className="sermons-series-head">
             <p className="muted">A sermon series is a study: its sermons in order, with dates, in Tasks and on the Calendar.</p>
-            <button type="button" className="btn btn-small btn-primary" onClick={newSeries}><Icon name="plus" size={13} /> New series</button>
+            {device.full && (<button type="button" className="btn btn-small btn-primary" onClick={newSeries}><Icon name="plus" size={13} /> New series</button>)}
           </div>
           {!studies.length && <p className="nb-empty">No series yet.</p>}
           <div className="studies-grid">
