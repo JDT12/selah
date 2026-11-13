@@ -103,6 +103,19 @@ whoever publishes the apps; Selahs never hold the keys. To set them up, from `~/
 
 Keep the `.p8` file and the service account somewhere safe off the server: they're as sensitive as a password.
 
+### Your own pages: privacy policy and support
+
+The app stores ask for a privacy policy and a support page. Put them on the server as plain HTML files in
+`notes-data/cloud/site/` (names in lowercase letters, numbers and hyphens), then load them:
+
+```bash
+cd ~/selah && npm run admin -- gateway
+```
+
+Each file appears at `https://www.<your domain>/<name>`: `privacy.html` at `/privacy`, `support.html` at `/support`, and
+`index.html` at the front page. Pictures go in `site/images/` and show at `/images/<name>` (png, jpg, webp, gif, svg). Pages can't load scripts, images from elsewhere or forms; styles inside the page work.
+Run `gateway` again after changing them. With no `site` folder, `www` shows nothing.
+
 ## The console from somewhere else
 
 The console answers only from the addresses you list. When your home address changes, from the server:
@@ -122,6 +135,7 @@ From `~/selah`:
 | `npm run admin -- create <name>` | A new Selah and its setup link |
 | `npm run admin -- setup-link <name>` | A fresh setup link (forgotten password) |
 | `npm run admin -- push-keys` | Which push keys are set for the Selah apps |
+| `npm run admin -- gateway` | Reloads the gateway, and your own pages in `site/` |
 | `npm run admin -- reset-two-step` | Resets the console's two-step sign-in, when you've lost the phone |
 | `npm run admin -- maintenance-stop` / `maintenance-start` | Stops and starts everything around server maintenance |
 | `bash scripts/update.sh` | [Updates](updates.md) to the newest release |

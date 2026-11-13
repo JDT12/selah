@@ -6,6 +6,18 @@ run: a console release doesn't need a Selah release, and the other way round. It
 
 ## [Unreleased]
 
+## [3.5.1] - 2026-11-10
+
+### Added
+- **Pictures for your own pages** (`server/admin/gateway.js`): files in `<cloud root>/site/images/` (png, jpg, webp, gif, svg, ico, avif) are served at `/images/<name>` on `www.<domain>`, and the pages may show them (`img-src 'self' data:`). Other files in `site/` are still not served. Run `npm run admin -- gateway` after adding them.
+
+## [3.5.0] - 2026-11-10
+
+The host's own pages, for the app stores' privacy policy and support links.
+
+### Added
+- **Your own pages at `www.<domain>`** (`server/admin/gateway.js`): each `<cloud root>/site/<name>.html` is served at `/<name>` (`index.html` at `/`), straight from the gateway's config with a strict content policy (no scripts, no outside images, no forms). `npm run admin -- gateway` loads changes. With no `site` folder nothing changes; `acme-host` certificates add `www.<domain>` only when there are pages.
+
 ## [3.4.0] - 2026-11-10
 
 Push notifications to the Selah phone and tablet apps.

@@ -204,6 +204,7 @@ export function IpadExportFolder() {
   return (
     <>
       <h3>Selah Companion (iPad)</h3>
+      <CompanionSync />
       <div className="about-row">
         <span className="muted">
           {s.folder ? <>Export for iPad saves sermons and lessons in <strong>{s.folder}</strong>.</>
@@ -216,6 +217,103 @@ export function IpadExportFolder() {
         </span>
       </div>
     </>
+  );
+}
+
+const ago = (t) => {
+  if (!t) return 'not yet';
+  const m = Math.round((Date.now() - t) / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+/**
+ * Companion sync: Selah Companion on an iPad takes a copy of your sermons, lessons and studies over your own Wi-Fi.
+ * Off until switched on; then an iPad is paired once by scanning a code.
+ */
+export function CompanionSync() {
+  const dialog = useDialog();
+  const [s, setS] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(() => api.companionSync().then(setS).catch(() => setS(null)), []);
+  useEffect(() => { refresh(); }, [refresh]);
+  if (!s) return null;
+  const toggle = async () => {
+    setBusy(true);
+    try { setS(await api.setCompanionSync(!s.on)); } catch (e) { dialog.toast(e.message, 'error', 7000); }
+    setBusy(false);
+  };
+  const pair = async () => {
+    try {
+      const code = await api.pairCompanion();
+      await dialog.open((c) => <PairDialog code={code} close={c} />);
+      refresh();
+    } catch (e) { dialog.toast(e.message, 'error', 7000); }
+  };
+  const remove = async (d) => {
+    if (!(await dialog.confirm({ title: `Remove ${d.name}?`, message: 'It stops syncing. What it already has stays on the iPad until you remove it there.', okLabel: 'Remove', danger: true }))) return;
+    try { setS(await api.removeCompanion(d.id)); } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+  return (
+    <>
+      <div className="about-row">
+        <span className="muted">
+          {!s.on ? <>Sync with Selah Companion on your iPad over this Wi-Fi: your sermons, lessons and studies, ready to preach and teach from with no connection. Nothing goes through the internet.</>
+            : s.error ? <span className="form-error">{s.error}</span>
+              : s.listening ? <>On. Your iPad syncs whenever it and this PC are on the same Wi-Fi and Selah is open.</>
+                : <>Starting…</>}
+        </span>
+        <span className="about-btns">
+          {s.on && <button className="btn btn-small btn-primary" onClick={pair} disabled={!s.listening}><Icon name="plus" size={14} /> Pair an iPad</button>}
+          <button className="btn btn-small" onClick={toggle} disabled={busy}>{s.on ? 'Turn off' : 'Turn on'}</button>
+        </span>
+      </div>
+      {s.on && s.devices.length > 0 && (
+        <ul className="companion-devices">
+          {s.devices.map((d) => (
+            <li key={d.id}>
+              <Icon name="tablet" size={16} />
+              <span className="companion-device-name">{d.name}</span>
+              <span className="muted">Last synced {ago(d.last_seen_at)}</span>
+              <button className="btn btn-small" onClick={() => remove(d)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function PairDialog({ code, close }) {
+  const dialog = useDialog();
+  const [left, setLeft] = useState(() => code.expires_at - Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setLeft(code.expires_at - Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [code.expires_at]);
+  const mins = Math.max(0, Math.ceil(left / 60_000));
+  return (
+    <div className="stack-form">
+      <h2>Pair an iPad</h2>
+      <div className="companion-pair">
+        {left > 0 ? <div className="qr-box" role="img" aria-label="QR code for Selah Companion" dangerouslySetInnerHTML={{ __html: code.qr }} /> : <div className="qr-box qr-loading" />}
+        <ol className="companion-steps">
+          <li>On the iPad, open <strong>Selah Companion</strong>.</li>
+          <li>Tap <strong>Sync with Selah Desktop</strong>, then <strong>Scan code</strong>.</li>
+          <li>Point the camera at this code. The iPad and this PC must be on the same Wi-Fi.</li>
+        </ol>
+      </div>
+      <p className="muted">{left > 0 ? `The code works for ${mins} more minute${mins === 1 ? '' : 's'}, for one iPad.` : 'This code has expired. Close this and pair again.'}</p>
+      <p className="muted">The first time, Windows may ask whether Selah can use your network. Choose <strong>Private networks</strong>.</p>
+      <div className="modal-actions">
+        {/* For an iPad whose camera can't be used: paste the code into Selah Companion instead. */}
+        <button type="button" className="btn" disabled={left <= 0} onClick={() => navigator.clipboard?.writeText(code.code).then(() => dialog.toast('Code copied'), () => dialog.toast('Couldn’t copy it', 'error'))}>Copy code</button>
+        <button type="button" className="btn btn-primary" onClick={() => close()}>Done</button>
+      </div>
+    </div>
   );
 }
 

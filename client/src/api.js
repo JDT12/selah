@@ -317,6 +317,11 @@ export const api = {
     return { blob: await res.blob(), version: Number(res.headers.get('X-Selah-Version')) || null };
   },
   ipadExportSettings: () => request('GET', '/api/ipad-export/settings'),
+  // Companion sync (Selah Desktop): the iPad on the same Wi-Fi.
+  companionSync: () => request('GET', '/api/companion-sync'),
+  setCompanionSync: (on) => request('PUT', '/api/companion-sync', { on }),
+  pairCompanion: () => request('POST', '/api/companion-sync/pair', {}),
+  removeCompanion: (id) => request('DELETE', `/api/companion-sync/devices/${encodeURIComponent(id)}`),
   setIpadExportSettings: (body) => request('PUT', '/api/ipad-export/settings', body),
   saveSlides: (noteId, deck) => request('PUT', `/api/notes/${noteId}/slides`, { deck }),
   slidesLive: (state) => request('PUT', '/api/slides/live', state),

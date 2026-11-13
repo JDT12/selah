@@ -5,3 +5,4 @@ notes-data/
 *.log
 wordpress-plugin/
 smoke-results/
+*.mobileprovision

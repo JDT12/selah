@@ -10,6 +10,8 @@ import { paths } from './paths.js';
  * The gateway: Caddy, in front of everything. It holds the certificate and sends each name to the right place:
  *   admin.<domain>   the admin console, only from the allowed addresses
  *   <name>.<domain>  that tenant's Selah (a paused one gets a short "paused" page)
+ *   www.<domain>     (13.0.1) the host's own pages, when there are any: each <cloud root>/site/<page>.html is served at
+ *                    /<page> (index.html at /), e.g. the privacy policy and support pages the app stores ask for
  *   anything else    "No Selah here"
  * The admin console writes Caddy's whole config (caddy/config.json) and loads it through Caddy's admin API, which
  * listens on a Unix socket in caddy/ (mode 600 folder), not on a network port.
@@ -58,9 +60,45 @@ const proxy = (port) => ({
   flush_interval: -1,
 });
 
+/** The host's own pages (<cloud root>/site/*.html), as { path, html }; none when the folder is missing. */
+export function sitePages() {
+  let files = [];
+  try { files = fs.readdirSync(paths.site).filter((f) => /^[a-z0-9-]+\.html$/.test(f)).sort(); } catch { return []; }
+  return files.map((f) => ({ path: f === 'index.html' ? '/' : `/${f.slice(0, -5)}`, html: fs.readFileSync(path.join(paths.site, f), 'utf8') }));
+}
+
+export const siteHost = () => `www.${cloud().domain}`;
+
+const sitePage = (html) => ({
+  handler: 'static_response', status_code: 200,
+  headers: {
+    'Content-Type': ['text/html; charset=utf-8'], 'Cache-Control': ['max-age=300'], 'X-Content-Type-Options': ['nosniff'],
+    'Content-Security-Policy': ["default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"],
+    'Referrer-Policy': ['no-referrer'],
+  },
+  body: html,
+});
+
+/** Pictures for those pages: <cloud root>/site/images/* at /images/*, image types only, read from disk. */
+const SITE_IMAGES = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'ico', 'avif'].map((x) => `/images/*.${x}`);
+const siteImages = () => ({
+  match: [{ path: SITE_IMAGES }],
+  handle: [
+    {
+      handler: 'headers',
+      response: { set: {
+        'Cache-Control': ['max-age=3600'], 'X-Content-Type-Options': ['nosniff'],
+        'Content-Security-Policy': ["default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"],
+      } },
+    },
+    { handler: 'file_server', root: paths.site },
+  ],
+});
+
 export function caddyConfig() {
   const c = cloud();
   if (!c.domain) throw new Error('No domain is set. Run: npm run admin -- init');
+  const site = sitePages();
   const routes = [
     {
       match: [{ host: [adminHost()] }],
@@ -78,6 +116,18 @@ export function caddyConfig() {
       handle: [t.status === 'active' ? proxy(t.port) : staticPage(503, 'Paused', 'This Selah is paused for now. Your notes are safe; ask your Selah host when it will be back.')],
       terminal: true,
     })),
+    ...(site.length ? [{
+      match: [{ host: [siteHost()] }],
+      handle: [{
+        handler: 'subroute',
+        routes: [
+          ...site.map((p) => ({ match: [{ path: p.path === '/' ? ['/'] : [p.path, `${p.path}/`, `${p.path}.html`] }], handle: [sitePage(p.html)] })),
+          siteImages(),
+          { handle: [staticPage(404, 'Not found', 'There’s no page at this address.')] },
+        ],
+      }],
+      terminal: true,
+    }] : []),
     { handle: [staticPage(404, 'No Selah here', 'There’s no Selah at this address. Check the link you were sent.')] },
   ];
   return {
@@ -129,7 +179,7 @@ function acmeTls(c) {
 
 /** Let's Encrypt, one certificate per name, proven on port 443 (TLS-ALPN); no DNS API needed. */
 function hostTls(c) {
-  const names = [adminHost(), ...listTenants().map((t) => tenantHost(t.slug))];
+  const names = [adminHost(), ...listTenants().map((t) => tenantHost(t.slug)), ...(sitePages().length ? [siteHost()] : [])];
   return {
     certificates: { automate: names },
     automation: {

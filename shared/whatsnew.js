@@ -4,6 +4,22 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '13.1.0',
+    date: '',
+    title: 'Sync Selah Companion over your Wi-Fi',
+    items: [
+      'In Selah Desktop, Selah Companion can now sync with your PC over your own Wi-Fi: Settings → Data & backup → Selah Companion → Turn on, then Pair an iPad and scan the code with the iPad.',
+      'Your sermons, lessons and Bible studies come over with their slides, pictures and Bible text, and open on the iPad in the same Preach and Teach screens as here.',
+      'Nothing goes through the internet, and only the iPads you pair can sync. Remove one any time from the same place.',
+    ],
+    try: [
+      'Settings → Data & backup → Selah Companion: Turn on, then Pair an iPad (the code shows, with Copy code).',
+      'On the iPad (Selah Companion build 3), Sync with Selah Desktop: scan the code, and check From Desktop.',
+      'Open a sermon in Preach and a lesson in Teach from From Desktop.',
+      'Remove the iPad in Settings and check that it can no longer sync.',
+    ],
+  },
+  {
     version: '13.0.0',
     date: '2026-11-10',
     title: 'Selah on your phone and tablet',

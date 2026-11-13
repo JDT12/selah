@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
  *   caddy/                      the gateway's config and its admin socket
  *   certs/                      the wildcard certificate (home server; the cloud uses Let's Encrypt)
  *   trash/                      deleted tenants, kept 7 days
+ *   site/                       the host's own pages at www.<domain> (privacy policy, support), optional
  * Nothing here imports config.js, so it can be used to set the environment before config.js is read.
  */
 export const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -23,6 +24,7 @@ export const paths = {
   caddy: path.join(root, 'caddy'),
   certs: path.join(root, 'certs'),
   trash: path.join(root, 'trash'),
+  site: path.join(root, 'site'),
   tenant: (slug) => {
     const dir = path.join(root, 'tenants', slug);
     return { dir, data: path.join(dir, 'data'), storage: path.join(dir, 'storage'), env: path.join(dir, 'tenant.env'), db: path.join(dir, 'storage', 'notes.db'), files: path.join(dir, 'storage', 'files') };
