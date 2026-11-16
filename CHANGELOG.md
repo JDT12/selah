@@ -4,25 +4,12 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
-Selah 13.1: Companion sync, Selah Desktop and the Selah Companion iPad app over your own Wi-Fi.
+## [13.0.1] - 2026-11-15
 
-### Added
-- **Companion sync** (Selah Desktop only, `server/companionsync.js`): Settings → Data & backup → Selah Companion →
-  Turn on. Off by default; when on, a second listener opens on the network (port 47631, `NOTEAPP_COMPANION_PORT` to
-  change it) that serves the sync and nothing else, while Selah itself still answers only this PC. **Pair an iPad**
-  shows a QR code (and **Copy code**) carrying the PC's addresses and a key made for that iPad, good for ten minutes
-  and one iPad; the iPad's first request confirms it. Paired iPads are listed with when they last synced, and
-  **Remove** ends one. Up to 10.
-- **What an iPad gets**: each sermon, lesson and Bible study, as the answers Selah's own Preach, Teach and slides
-  screens ask this server for (the note, its sermon or lesson, slides, ink, attendance, the slides' brand, the Bible
-  settings), the Bible text of the note's references and passage slides (up to 500 verses and 60 passages each), and
-  the pictures they show, each with its SHA-256. Each piece of work has a hash, so the iPad fetches only what changed.
+A fix for drawing on an iPad or phone.
 
-### Security
-- Every sync message both ways is sealed with AES-256-GCM using the iPad's own key (bound to the iPad and the
-  direction), and each must count higher than the last, so a message caught on the network can't be sent again.
-  Unknown iPads, wrong keys, replays and anything but `POST /sync` and `GET /hello` are refused, and an address
-  that keeps failing is turned away for a minute. Keys are stored encrypted with the library's secrets key.
+### Fixed
+- **The keyboard stays closed while you draw** (`editor/Drawing.jsx`): on iOS every tap on a drawing's tools (pen, highlighter, eraser, colors, thickness) opened the on-screen keyboard. A touch or pen tap inside a drawing now sets `inputmode="none"` on the editor (and lets go of a keyboard already up); a tap in the note's text clears it, so the keyboard opens there as usual. A hardware keyboard still types. Mouse clicks are unchanged.
 
 ## [13.0.0] - 2026-11-10
 

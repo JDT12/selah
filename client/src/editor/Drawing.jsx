@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Node } from '@tiptap/core';
+import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
 import Icon from '../components/Icon.jsx';
 import { useStoredState } from '../useStoredState.js';
@@ -554,6 +555,29 @@ export const Drawing = Node.create({
     return {
       insertDrawing: (attrs = {}) => ({ commands }) => commands.insertContent({ type: this.name, attrs }),
     };
+  },
+
+  addProseMirrorPlugins() {
+    return [new Plugin({
+      key: new PluginKey('drawingKeyboard'),
+      // 13.0.1: on a phone or tablet, a tap or pen stroke inside a drawing (tools included) tells the on-screen keyboard
+      // to stay closed; a tap anywhere else in the note opens it again as usual. A hardware keyboard still types.
+      view: (view) => {
+        const onDown = (e) => {
+          if (e.pointerType === 'mouse') return;
+          const inDrawing = e.target instanceof Element && e.target.closest('.drawing');
+          if (inDrawing) {
+            view.dom.setAttribute('inputmode', 'none');
+            // A keyboard already up from typing goes away too.
+            if (document.activeElement === view.dom) view.dom.blur();
+          } else {
+            view.dom.removeAttribute('inputmode');
+          }
+        };
+        view.dom.addEventListener('pointerdown', onDown, true);
+        return { destroy: () => { view.dom.removeEventListener('pointerdown', onDown, true); view.dom.removeAttribute('inputmode'); } };
+      },
+    })];
   },
 
   addNodeView() {

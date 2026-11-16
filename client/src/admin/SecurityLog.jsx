@@ -5,7 +5,9 @@ import { ErrorNote, useLoad, when } from './common.jsx';
 /** Every tenant's security log in one place (copied here by the monitor once a minute). */
 export const KIND_LABEL = {
   'sign-in': { label: 'Signed in' },
-  'sign-in-failed': { label: 'Wrong password', bad: true },
+  'sign-in-failed': { label: 'Wrong password (or username)', bad: true },
+  'identity-set': { label: 'Username and email chosen' },
+  'identity-changed': { label: 'Username or email changed' },
   'code-failed': { label: 'Wrong sign-in code', bad: true },
   'confirm-failed': { label: 'Wrong password or code when confirming', bad: true },
   locked: { label: 'Sign-in paused after too many failures', bad: true },
@@ -29,6 +31,7 @@ export const KIND_LABEL = {
   'backup-download': { label: 'Downloaded a backup' },
   'notes-restored': { label: 'Notes restored from a backup' },
   'demo-reset': { label: 'Demo reset to its sample data' },
+  'smoke-test-session': { label: 'Signed in for a release check' },
   'release-prepared': { label: 'Release prepared' },
   'release-promoted': { label: 'Beta promoted to main' },
   'account-deletion': { label: 'Asked to delete their account', bad: true },

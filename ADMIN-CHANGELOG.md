@@ -6,6 +6,11 @@ run: a console release doesn't need a Selah release, and the other way round. It
 
 ## [Unreleased]
 
+## [3.5.2] - 2026-11-13
+
+### Fixed
+- **Security log** (`client/src/admin/SecurityLog.jsx`): entries that showed their raw names now have words: `identity-set` ("Username and email chosen"), `identity-changed` ("Username or email changed") and `smoke-test-session` ("Signed in for a release check"). `sign-in-failed` reads "Wrong password (or username)", as it does in a tenant's own Settings → Security.
+
 ## [3.5.1] - 2026-11-10
 
 ### Added
