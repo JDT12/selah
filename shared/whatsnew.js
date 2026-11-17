@@ -4,6 +4,17 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.0.0',
+    date: '2026-11-17',
+    title: 'Selah 14: your Selah, your server',
+    items: [
+      'Selah now comes three ways from one app: Selah Desktop on your own computer, Selah Cloud on a server you run, and Selah Ministry for a church or ministry on its own server.',
+      'Selah Companion is retired, and Export for iPad with it. The Selah app for iPhone, iPad and Android takes its place.',
+      'Selah Desktop and the phone and tablet app sign in to any Selah server: type its address, or scan the code in Settings → General → App → Connect a phone or tablet.',
+      'Sharing with other people is part of Selah Ministry. On Selah Desktop and Selah Cloud, Share… on a note or notebook offers to export or print it instead.',
+    ],
+  },
+  {
     version: '13.0.1',
     date: '2026-11-15',
     title: 'Drawing on an iPad or phone',

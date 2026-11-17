@@ -49,8 +49,8 @@ import HandwritingDialog from './HandwritingDialog.jsx';
 import { drawingToPng } from '../editor/Drawing.jsx';
 import { pagesFromFile, pagesFromUrl } from '../handwriting.js';
 import { pickFilesNative } from '../desktop.js';
-import { serverMode } from '../mode.js';
-import { openShare } from './SharingDialogs.jsx';
+import { canShare } from '../mode.js';
+import { openShare, openShareInstead } from './SharingDialogs.jsx';
 import { useCommentMarks } from './CommentThreads.jsx';
 
 /**
@@ -533,7 +533,7 @@ function LoadedNote({
 
   // ---- 8.0: sharing. Who this note is shared with (on its own, or in a shared notebook or project) and the
   // comments people made on it, highlighted in the text and listed in the side panel's Comments tab. ----
-  const hosted = serverMode() === 'tenant';
+  const hosted = canShare();
   const phoneBar = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 800px)').matches;
   const [sharing, setSharing] = useState({ shares: [], threads: [] });
   const [thread, setThread] = useState(null);
@@ -1098,6 +1098,9 @@ function LoadedNote({
             !isTemplate && { label: 'Insert template…', onClick: insertTemplate },
             { label: 'Copy link to note', onClick: () => noteActions.copyLink(note) },
             hosted && !isTemplate && { label: sharedWith.length ? 'Sharing…' : 'Share…', onClick: shareNote },
+            // Desktop and Cloud (14.0): no one to share with, so Share… points to exporting or printing the note.
+            !hosted && !isTemplate && device.full && { label: 'Share…', onClick: () => openShareInstead(dialog, {
+              noun: 'note', onExport: exportNote, onPrint: async () => { await flush(); printHandout(dialog, note.id); } }) },
             { label: 'Find in note… (Ctrl+F)', onClick: openFind },
             // On a phone the side panel's button is in here, to keep the bar to one row.
             phoneBar && { label: panel ? 'Close the side panel' : 'Side panel: outline, passage…', onClick: () => (panel ? setPanel(null) : openPanel(lastPanel)) },

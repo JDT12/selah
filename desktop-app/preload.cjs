@@ -10,7 +10,7 @@ const call = (name) => (...args) => ipcRenderer.invoke(name, ...args);
 contextBridge.exposeInMainWorld('selahDesktop', {
   kind: 'electron',
   version: info.version,
-  // 'offline' (the library on this PC) or 'connect' (a Selah Cloud server)
+  // 'offline' (the library on this PC) or 'connect' (the person's own Selah server)
   mode: info.mode,
   // 'win32', 'darwin' or 'linux' (12.1): what the page calls the tray, the sign-in start, the lock's fingerprint
   platform: info.platform,

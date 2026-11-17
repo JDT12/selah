@@ -15,6 +15,25 @@ const NOUN = { note: 'note', notebook: 'notebook', study: 'project' };
 export const openShare = (dialog, { kind, id, title, alsoIn = [] }) => dialog.open((c) => <ShareDialog kind={kind} id={id} title={title} alsoIn={alsoIn} close={c} />);
 export const openContacts = (dialog) => dialog.open((c) => <ContactsDialog close={c} />);
 
+/**
+ * "Share…" on Selah Desktop and Selah Cloud (14.0): sharing between people is part of Selah Ministry, so this points to
+ * exporting or printing instead. `onExport` and `onPrint` are optional; whichever is given gets a button.
+ */
+export const openShareInstead = (dialog, { noun, onExport, onPrint }) => dialog.open((close) => (
+  <div>
+    <h2>Share this {noun}</h2>
+    <p className="modal-message">
+      Sharing with other people is part of Selah Ministry, where a church runs one Selah for its people.
+      To share this {noun}, export it or print it and send that.
+    </p>
+    <div className="modal-actions">
+      <button type="button" className="btn" onClick={() => close(null)}>Close</button>
+      {onPrint && <button type="button" className="btn" onClick={() => { close(null); onPrint(); }}>Print…</button>}
+      {onExport && <button type="button" className="btn btn-primary" autoFocus onClick={() => { close(null); onExport(); }}>Export…</button>}
+    </div>
+  </div>
+));
+
 /** `alsoIn`: shared notebooks and projects this note is in ({ kind, title, people }), mentioned so it's clear who sees it already. */
 export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
   const dialog = useDialog();

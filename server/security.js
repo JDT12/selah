@@ -145,7 +145,7 @@ export function requestChecks(app) {
 
     // Selah Desktop: the app's own windows carry this launch's key; there's no sign-in. Anything else is refused,
     // including the clipper's routes (the clipper isn't paired with a desktop library).
-    if (config.edition === 'desktop') {
+    if (config.product === 'desktop') {
       if (!desktopKeyOk(req.headers['x-selah-desktop'])) {
         h.bad++;
         return reply.code(401).send({ error: 'Not signed in' });
@@ -199,7 +199,7 @@ function signedIn(req, reply, { twoFactor, app, method }) {
 const SIGN_IN_ROUTES = /^\/api\/(login|logout|password|security|setup|mobile)(\/|$)/;
 
 export default async function security(app) {
-  if (config.edition === 'desktop') {
+  if (config.product === 'desktop') {
     app.addHook('onRequest', async (req, reply) => {
       if (SIGN_IN_ROUTES.test(req.url.split('?')[0])) return reply.code(404).send({ error: 'Not in Selah Desktop' });
     });

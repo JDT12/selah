@@ -36,6 +36,35 @@ const shellUrl = (query) => `${mobilePlatform() === 'ios' ? 'capacitor://localho
 export const changeServer = () => { location.href = shellUrl('change=1'); };
 export const openSavedCopies = () => { location.href = shellUrl('offline=1'); };
 
+// 14.0: the app may open any Selah server, so it lets the web view go anywhere (capacitor.config.json). Pages on other
+// sites open in the in-app browser instead of taking Selah's place, and a connect link (selahapp://connect, the QR code
+// in Settings) goes to the app's built-in page, which asks before switching servers.
+if (native()) {
+  const browser = () => native()?.Plugins?.Browser ?? null;
+  const elsewhere = (href) => {
+    try {
+      const u = new URL(href, location.href);
+      return /^https?:$/.test(u.protocol) && u.origin !== location.origin ? u.href : null;
+    } catch { return null; }
+  };
+  const openOutside = (url) => { Promise.resolve(browser().open({ url })).catch(() => {}); };
+  document.addEventListener('click', (e) => {
+    if (e.defaultPrevented || !browser()) return;
+    const a = e.target.closest?.('a[href]');
+    const url = a && elsewhere(a.href);
+    if (url) { e.preventDefault(); openOutside(url); }
+  });
+  const openWindow = window.open.bind(window);
+  window.open = (url, ...rest) => {
+    const outside = url && browser() && elsewhere(String(url));
+    if (outside) { openOutside(outside); return null; }
+    return openWindow(url, ...rest);
+  };
+  Promise.resolve(native().Plugins?.App?.addListener?.('appUrlOpen', (e) => {
+    if (String(e?.url ?? '').startsWith('selahapp:')) location.href = shellUrl(`link=${encodeURIComponent(e.url)}`);
+  })).catch(() => {});
+}
+
 const getJson = async (url) => {
   const r = await fetch(url, { credentials: 'same-origin' });
   if (!r.ok) throw new Error(`${url}: ${r.status}`);

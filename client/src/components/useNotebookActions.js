@@ -1,8 +1,8 @@
 import { useDialog } from './Dialogs.jsx';
 import { api } from '../api.js';
 import { openExport } from './ExportDialog.jsx';
-import { openShare } from './SharingDialogs.jsx';
-import { serverMode } from '../mode.js';
+import { openShare, openShareInstead } from './SharingDialogs.jsx';
+import { canShare } from '../mode.js';
 
 /**
  * Notebook and stack actions shared by the sidebar and the Notebooks page. Each one asks for
@@ -111,8 +111,9 @@ export function useNotebookActions({ tree, onRefresh, onCreated, onDeleted }) {
       word: one ? { noteIds: async () => (await api.listNotes({ notebook: one.id })).map((n) => n.id) } : null,
     });
   };
-  /** "Share…" for a notebook, in the cloud (8.0); null on a home server, where there's no one to share with. */
-  const shareItem = (nb) => (serverMode() === 'tenant' ? { label: 'Share…', onClick: () => openShare(dialog, { kind: 'notebook', id: nb.id, title: nb.name }) } : null);
+  /** "Share…" for a notebook: sharing on Selah Ministry (8.0); elsewhere it points to exporting the notebook (14.0). */
+  const shareItem = (nb) => ({ label: 'Share…', onClick: () => (canShare() ? openShare(dialog, { kind: 'notebook', id: nb.id, title: nb.name })
+    : openShareInstead(dialog, { noun: 'notebook', onExport: () => exportNotebooks([nb]) })) });
   const exportStack = (s) => openExport(dialog, { scope: { stack: s.id }, title: s.name });
 
   const addShortcut = (kind, id) => run(() => api.addShortcut(kind, id));

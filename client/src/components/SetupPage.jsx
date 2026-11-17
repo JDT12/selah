@@ -118,7 +118,7 @@ export default function SetupPage() {
                 <label className="setup-label" htmlFor="setup-email">Email</label>
                 <input id="setup-email" className="input" type="email" autoComplete="email" placeholder="you@example.com"
                   value={email} onChange={(e) => setEmail(e.target.value)} />
-                <p className="muted setup-note">You can sign in with either one. Your host uses the email to reach you about your account.</p>
+                <p className="muted setup-note">You can sign in with either one. Your Selah admin uses the email to reach you about your account.</p>
                 <label className="setup-label" htmlFor="setup-password">Password</label>
                 <input id="setup-password" className="input" type="password" autoComplete="new-password" placeholder={`Password (at least ${min} characters)`}
                   value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Password" />

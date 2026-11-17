@@ -55,8 +55,8 @@ export default async function account(app) {
       email: who?.email ?? '',
       // Ask once, right after signing in, on a Selah from before 10.0 (not the admin console).
       // Neither in Selah Desktop, which has no sign-in.
-      ask: !who && config.mode !== 'admin' && config.edition !== 'desktop' && getSetting('account_identity_asked') == null,
-      twoStepNudge: config.mode !== 'admin' && config.edition !== 'desktop' && !twoFactorOn() && getSetting('two_step_nudge_off') == null,
+      ask: !who && config.mode !== 'admin' && config.product !== 'desktop' && getSetting('account_identity_asked') == null,
+      twoStepNudge: config.mode !== 'admin' && config.product !== 'desktop' && !twoFactorOn() && getSetting('two_step_nudge_off') == null,
     };
   });
 

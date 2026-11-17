@@ -21,7 +21,7 @@ import { openLessonBuilder, writeLesson } from '../components/LessonBuilder.jsx'
 import { chooseMethod } from '../components/MethodPicker.jsx';
 import { parse } from '../../../shared/scripture.js';
 import { openShare } from '../components/SharingDialogs.jsx';
-import { serverMode } from '../mode.js';
+import { canShare } from '../mode.js';
 import { confirmNew } from '../components/ExistingWork.jsx';
 
 const plural = (n, w, many = `${w}s`) => `${n} ${n === 1 ? w : many}`;
@@ -309,7 +309,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
             s.status === 'active' && { label: 'Mark finished', onClick: () => setStatus('done') },
             s.status !== 'archived' && { label: 'Move to the archive', onClick: () => setStatus('archived') },
             { label: s.data.inTasks === false ? 'Show dated items in Tasks and Calendar' : 'Keep dated items out of Tasks and Calendar', onClick: async () => { await api.updateStudy(s.id, { data: { inTasks: s.data.inTasks === false } }); changed(); } },
-            serverMode() === 'tenant' && { label: 'Share…', onClick: () => openShare(dialog, { kind: 'study', id: s.id, title: s.title }) },
+            canShare() && { label: 'Share…', onClick: () => openShare(dialog, { kind: 'study', id: s.id, title: s.title }) },
             'sep',
             { label: 'Delete study…', danger: true, onClick: remove },
           ]} />

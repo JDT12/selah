@@ -274,7 +274,7 @@ function SetupForm({ status, reconnect, onCancel, onDone, onRecheck }) {
       <h2>{reconnect ? 'Change off-site backup' : 'Set up off-site backup'}</h2>
       <p className="modal-message">
         {isHosted()
-          ? 'Every night an encrypted copy of your notes, attachments and settings goes to storage you own, besides your host’s backup. It’s encrypted with your passphrase before it leaves the server, so neither the storage company nor your host can read it.'
+          ? 'Every night an encrypted copy of your notes, attachments and settings goes to storage you own, besides your Selah admin’s backup. It’s encrypted with your passphrase before it leaves the server, so neither the storage company nor your Selah admin can read it.'
           : 'Every night, after the local backup, an encrypted copy of your notes, attachments, settings and the server’s certificates goes to storage you own. It’s encrypted on this server with your passphrase first, so the storage company can’t read it.'}
       </p>
 

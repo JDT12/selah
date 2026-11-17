@@ -2,7 +2,7 @@
 //   Offline   Selah's own server runs here, on 127.0.0.1 only, with the library in the folder below. There's no
 //             sign-in: the app starts the server with a fresh key each launch and adds it to every request its own
 //             windows make (X-Selah-Desktop), so nothing else on the PC can use the server.
-//   Connect   the window shows a Selah Cloud server (https://…), signed in to like a browser.
+//   Connect   the window shows the person's own Selah server (https://…), signed in to like a browser.
 // Either way: a tray (Windows, Linux) or menu-bar (Mac) icon (closing the window keeps Selah running for reminders),
 // start at sign-in, the system's notifications, quick capture (Ctrl+Alt+N; Cmd+Option+N on a Mac), the slides window
 // full screen on a second monitor, and updates from GitHub Releases. Offline adds an optional PIN lock, with Windows
@@ -226,7 +226,7 @@ function installKeyHeader() {
   });
 }
 
-/** The address the windows show: the local server, or the Cloud server chosen. */
+/** The address the windows show: the local server, or the Selah server chosen. */
 const home = () => (settings.mode === 'connect' ? settings.server : server?.origin);
 const sameOrigin = (url) => { try { return new URL(url).origin === new URL(home()).origin; } catch { return false; } };
 
@@ -572,13 +572,8 @@ function bridge() {
     return appSettingsView();
   });
   handle('set-server', async (_e, url) => {
-    const u = String(url ?? '').trim();
-    let origin = null;
-    if (u) {
-      try { origin = new URL(u); } catch { /* checked below */ }
-      if (origin?.protocol !== 'https:') throw new Error('Type the whole address, starting with https://');
-    }
-    saveSettings(origin ? { mode: 'connect', server: origin.origin } : { mode: 'offline' });
+    const origin = String(url ?? '').trim() ? await selahServer(url) : null;
+    saveSettings(origin ? { mode: 'connect', server: origin } : { mode: 'offline' });
     app.relaunch({ args: process.argv.slice(1).filter((a) => a !== HIDDEN_ARG) });
     quitting = true;
     app.exit(0);
@@ -606,14 +601,33 @@ function bridge() {
   // First start.
   handle('first-run', async (_e, choice) => {
     if (choice?.mode === 'connect') {
-      const u = new URL(String(choice.server ?? '').trim());
-      if (u.protocol !== 'https:') throw new Error('Type the whole address, starting with https://');
-      saveSettings({ mode: 'connect', server: u.origin });
+      saveSettings({ mode: 'connect', server: await selahServer(choice.server) });
     } else {
       saveSettings({ mode: 'offline' });
     }
     await begin();
   });
+}
+
+// ---------- your Selah server (14.0) ----------
+/**
+ * The origin of a Selah server from what was typed: https:// is added when it's left off, and the address has to answer
+ * /api/session like a Selah does, so a typo or a website that isn't Selah is caught here rather than after a relaunch.
+ */
+async function selahServer(typed) {
+  let t = String(typed ?? '').trim();
+  if (t && !/^[a-z][a-z0-9+.-]*:\/\//i.test(t)) t = `https://${t}`;
+  let u = null;
+  try { u = new URL(t); } catch { /* checked below */ }
+  if (!u || !u.hostname) throw new Error('Type your Selah server’s address, like selah.example.org');
+  if (u.protocol !== 'https:') throw new Error('Selah servers use https://. Check the address with whoever runs the server.');
+  let r;
+  try { r = await net.fetch(`${u.origin}/api/session`, { signal: AbortSignal.timeout(10_000) }); } catch {
+    throw new Error(`Couldn’t reach ${u.host}. Check the address and your internet connection.`);
+  }
+  const v = r.ok ? await r.json().catch(() => null) : null;
+  if (typeof v?.authenticated !== 'boolean') throw new Error(`${u.host} answered, but it isn’t a Selah server. Check the address.`);
+  return u.origin;
 }
 
 // ---------- start ----------

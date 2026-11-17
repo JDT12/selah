@@ -10,5 +10,8 @@ $('connect').onclick = () => { $('choices').hidden = true; $('server').hidden = 
 $('back').onclick = () => { $('choices').hidden = false; $('server').hidden = true; };
 $('server').onsubmit = async (e) => {
   e.preventDefault();
+  const go = e.submitter ?? document.querySelector('#server .primary');
+  go.disabled = true; go.textContent = 'Checking…'; $('error').textContent = '';
   try { await window.selahDesktop.firstRun({ mode: 'connect', server: $('url').value }); } catch (err) { fail(err); }
+  go.disabled = false; go.textContent = 'Connect';
 };

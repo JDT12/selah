@@ -129,11 +129,30 @@ export default async function routes(app) {
     cert: config.mode === 'single' ? certInfo() : null,
     mode: config.mode,
     tenant: config.tenant,
-    // 'desktop' in Selah Desktop (12.0): no sign-in, no sharing, automatic backups to a folder.
+    // 14.0: 'desktop', 'cloud' or 'ministry' (server/config.js). edition ('desktop' or 'server') stays for older apps.
+    product: config.product,
     edition: config.edition,
   }));
 
   app.get('/api/version', async () => ({ version: VERSION }));
+
+  // 14.0: what the "Connect a phone or tablet" QR code (Settings → General → App) opens. The phone's camera brings it
+  // up in the browser; its button opens the Selah app with this server's address (selahapp://connect, mobile-app/www/shell.js).
+  app.get('/connect-app', async (req, reply) => {
+    const origin = `https://${req.host}`; // the app only opens https servers
+    const link = `selahapp://connect?server=${encodeURIComponent(origin)}`;
+    reply.type('text/html; charset=utf-8').header('Cache-Control', 'no-store');
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Open Selah on this device</title>
+<style>body{margin:0;font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;background:#f4efe8;color:#1f2d4d}
+main{max-width:26rem;margin:0 auto;padding:48px 20px;text-align:center}h1{font-size:1.5rem;margin:0 0 8px}
+a.btn{display:inline-block;margin:20px 0;padding:12px 22px;border-radius:10px;background:#2f5d86;color:#fff;text-decoration:none;font-weight:600}
+code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;word-break:break-all}p{color:#4a5568}</style></head>
+<body><main><h1>Open Selah on this device</h1>
+<p>With the Selah app installed, tap the button to open ${escapeHtml(req.host)} in it.</p>
+<a class="btn" href="${escapeHtml(link)}">Open in the Selah app</a>
+<p>Or open the Selah app and type this address: <code>${escapeHtml(req.host)}</code></p></main></body></html>`;
+  });
 
   // The maintenance banner for users (sent by the admin console; server/tenant.js): while it's on, from its "show
   // from" time until maintenance ends (4 hours after the start when no end was given).

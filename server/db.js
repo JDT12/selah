@@ -5,11 +5,11 @@ import { config } from './config.js';
 import { applyPendingRestore } from './desktoprestore.js';
 
 // Selah Desktop makes its library folder the first time (there's no separate disk to mount).
-if (config.edition === 'desktop' && !fs.existsSync(config.storageMarker)) {
+if (config.product === 'desktop' && !fs.existsSync(config.storageMarker)) {
   fs.mkdirSync(config.storageDir, { recursive: true });
   fs.writeFileSync(config.storageMarker, 'Selah Desktop library. Do not delete.\n');
 }
-if (config.edition === 'desktop') {
+if (config.product === 'desktop') {
   try {
     const r = applyPendingRestore();
     if (r) console.log(`Restored the library from ${r.from}.`);

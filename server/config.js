@@ -14,7 +14,12 @@ const mode = ['tenant', 'admin'].includes(process.env.NOTEAPP_MODE) ? process.en
 // 12.0: Selah Desktop (desktop-app/, Electron) runs this server in single mode on the person's own PC: only on
 // 127.0.0.1, plain HTTP, no sign-in. The app starts it with a fresh key each launch (NOTEAPP_DESKTOP_KEY) and adds
 // it to every request its windows make, so nothing else on the PC (another program, a web page) can use it.
-const edition = mode === 'single' && process.env.NOTEAPP_EDITION === 'desktop' ? 'desktop' : 'server';
+// 14.0: which Selah this is, the one setting the rest of the code asks (in place of the old desktop-or-not edition):
+//   desktop   Selah Desktop, local only (NOTEAPP_EDITION=desktop, single mode)
+//   cloud     a self-hosted single Selah, synced over the web (single mode)
+//   ministry  a self-hosted multi-tenant Selah for a church or ministry (tenant mode, and the admin console)
+const product = mode !== 'single' ? 'ministry' : process.env.NOTEAPP_EDITION === 'desktop' ? 'desktop' : 'cloud';
+const edition = product === 'desktop' ? 'desktop' : 'server';
 const desktopKey = edition === 'desktop' ? (process.env.NOTEAPP_DESKTOP_KEY || null) : null;
 delete process.env.NOTEAPP_DESKTOP_KEY;
 // Selah Desktop keeps the secrets key (server/secrets.js) sealed with Windows DPAPI and hands it over here.
@@ -53,6 +58,8 @@ export const config = {
   // Calendar/tasks: all times are wall-clock times in this zone.
   timeZone: process.env.NOTEAPP_TZ || 'America/Chicago',
   mode,
+  product,
+  // Kept for code from before 14.0 (and /api/session's edition field): 'desktop' or 'server'.
   edition,
   desktopKey,
   secretKey,

@@ -165,7 +165,7 @@ export function runBackup(log) {
 
 /** A backup when the last is older than the chosen interval: soon after starting, then every half hour. */
 export function scheduleDesktopBackups(log) {
-  if (config.edition !== 'desktop') return;
+  if (config.product !== 'desktop') return;
   const tick = () => {
     const s = state();
     if (!s.folder || s.every === 'off' || running) return;
@@ -185,7 +185,7 @@ export function scheduleDesktopBackups(log) {
  * notes is left alone.
  */
 export async function seedDesktopDemo(app, log) {
-  if (config.edition !== 'desktop' || process.env.NOTEAPP_DESKTOP_DEMO !== '1') return;
+  if (config.product !== 'desktop' || process.env.NOTEAPP_DESKTOP_DEMO !== '1') return;
   if (db.prepare('SELECT count(*) AS n FROM notes WHERE is_template = 0').get().n > 0) return;
   const { seedDemo } = await import('./demo/seed.js');
   const r = await seedDemo(app, {});
@@ -251,7 +251,7 @@ async function stageRestore(file, passphrase) {
 // ---------- routes ----------
 
 export default async function desktopBackups(app) {
-  if (config.edition !== 'desktop') return;
+  if (config.product !== 'desktop') return;
 
   app.get('/api/desktop/backups', async () => {
     const s = state();

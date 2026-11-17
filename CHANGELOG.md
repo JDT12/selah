@@ -4,6 +4,54 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.0.0] - 2026-11-17
+
+Selah 14.0: three modes from one codebase, and Selah Companion retired.
+
+### Changed
+- **One mode setting** (`server/config.js` `config.product`): `desktop` (Selah Desktop, local only), `cloud` (a
+  self-hosted single Selah) or `ministry` (a self-hosted multi-tenant Selah: tenants and the admin console), worked
+  out from `NOTEAPP_MODE` and `NOTEAPP_EDITION`. The server's desktop checks ask it in place of `config.edition`,
+  which stays as `desktop`/`server` for older code. `/api/session` sends `product` beside `edition`;
+  `client/src/mode.js` adds `selahProduct()` and `canShare()` (sharing is Ministry only, on a tenant), and falls back
+  to `edition` for a server from before 14.0.
+
+- **Wording: Selah never hosts.** Selah Desktop's first screen reads **Use Selah on this computer** and **Sign in to
+  your Selah server** (`desktop-app/pages/welcome.html`), as do Settings → General → App and its dialog, the Download
+  row and the user guide. "Selah Cloud server" becomes "your Selah server", the guide's "A Selah hosted for you"
+  becomes "Selah Ministry: a Selah on your church's server", and "your host" becomes "your Selah admin" (Account,
+  off-site backup, setup page, guide).
+
+- **Sharing is Selah Ministry's.** On Selah Desktop and Selah Cloud, **Share…** on a note or a notebook opens a short
+  dialog that points to **Export…** and **Print…** (`openShareInstead`, `SharingDialogs.jsx`); on Ministry it opens
+  sharing as before. The sharing API's refusal reads "Sharing is part of Selah Ministry."
+
+- **Any Selah server, from Desktop and the mobile app.** Desktop's first screen and Settings → General → App take an
+  address with or without `https://` and check it answers `/api/session` like a Selah before switching
+  (`selahServer` in `desktop-app/main.cjs`; the dialog shows what went wrong). The mobile app's picker no longer
+  adds a fixed domain or limits the address to one: any https server works, checked the same way (CapacitorHttp),
+  and the web view may go to any host (`allowNavigation: ["*"]`, CSP `form-action https:`). So links to other sites
+  open in the in-app browser (`@capacitor/browser`, added) rather than in Selah's place (`client/src/mobile.js`).
+
+- **Connect a phone or tablet** (Settings → General → App on the web, `PhoneAppRow.jsx`): a QR code for
+  `/connect-app`, a public page whose button opens `selahapp://connect?server=…`. The app registers `selahapp`
+  (Android intent filter, iOS `CFBundleURLTypes`) and asks before switching to the server a link names
+  (`mobile-app/www/shell.js`; a link that arrives while a Selah page is open goes back to the built-in page).
+
+- **Push is optional.** As in 13.0, a device registers for push only when its server says push is set up (tenant
+  mode with the console's APNs/Firebase keys); every other server's apps use reminders scheduled on the device, with
+  no errors. The user guide says so.
+
+### Removed
+- **Export for iPad** (12.2): the .selahlesson export for Selah Companion is gone with Companion. The tablet button in
+  Preach and Teach mode, the sermon and lesson builders' Export for iPad, and Desktop's export folder setting are
+  removed, with `server/lessonexport.js` (`/api/notes/:id/ipad-export`, `/api/notes/:id/block-ids`,
+  `/api/ipad-export/settings`), `client/src/ipadExport.js`, `IpadExport.jsx` and `docs/selahlesson-format.md`. An
+  existing `lesson_exports` table and the block ids already in notes are left as they are.
+- **Selah Companion sync is parked** (`server/companionsync.js`, from the scrapped 13.1.0-beta.1): it no longer
+  starts, so Settings shows no Companion sync. The code stays for 14.1's local network mode;
+  `NOTEAPP_COMPANION_SYNC=1` turns it on for development.
+
 ## [13.0.1] - 2026-11-15
 
 A fix for drawing on an iPad or phone.

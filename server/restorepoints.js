@@ -89,7 +89,7 @@ export function scheduleRestorePoints(log) {
  * folder's conflict copies. [{ source: 'file:<path>', at, label }], newest first.
  */
 function backupFiles() {
-  if (config.edition !== 'desktop') return [];
+  if (config.product !== 'desktop') return [];
   const out = [];
   let auto = null;
   try { auto = JSON.parse(db.prepare("SELECT value FROM settings WHERE key = 'desktop_backup'").get()?.value ?? 'null')?.folder; } catch { /* none */ }

@@ -151,7 +151,7 @@ const changed = (what, extra = {}) => broadcast({ sharing: what, ...extra });
 
 const sharingOn = () => getSetting('sharing_off') !== 'yes';
 function mustBeOn() {
-  if (!enabled()) throw httpError(404, 'Sharing is only for Selah in the cloud.');
+  if (!enabled()) throw httpError(404, 'Sharing is part of Selah Ministry.');
   if (!sharingOn()) throw httpError(403, 'Sharing is turned off for your Selah. Ask your Selah host.');
 }
 

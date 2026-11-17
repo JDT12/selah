@@ -9,8 +9,7 @@ import Icon from './Icon.jsx';
  * Settings for Selah Desktop (12.0, desktop-app/):
  * - DesktopBackups (Data & backup): automatic backups to a folder (server/desktopbackup.js), Restore from one,
  *   Import a library from any backup file. Restoring replaces the whole library; the app restarts its server.
- * - IpadExportFolder (Data & backup): the folder Export for iPad saves into (12.2, server/lessonexport.js).
- * - DesktopAppRow (General → App): start at sign-in, the lock, Offline or a Cloud server, updates. Those live in
+ * - DesktopAppRow (General → App): start at sign-in, the lock, Offline or a Selah server, updates. Those live in
  *   the app (window.selahDesktop), not the library.
  */
 
@@ -178,8 +177,8 @@ export function DesktopBackups() {
       <h3>Move a library</h3>
       <div className="about-row">
         <span className="muted">
-          Import a library from a backup file: one from another computer, or a Selah Cloud backup (Settings → Data &amp; backup →
-          Download a backup there). It replaces this library. To move this library to Selah Cloud, use Download a backup
+          Import a library from a backup file: one from another computer, or a backup from a Selah server (Settings → Data &amp; backup →
+          Download a backup there). It replaces this library. To move this library to a Selah server, use Download a backup
           below and restore it there.
         </span>
         <button className="btn btn-small" onClick={importLibrary} disabled={busy}><Icon name="import" size={13} /> Import a library…</button>
@@ -188,34 +187,101 @@ export function DesktopBackups() {
   );
 }
 
-/** Export for iPad's folder: where sermons and lessons go for Selah Companion (a folder the iPad's Files app reaches). */
-export function IpadExportFolder() {
+const ago = (t) => {
+  if (!t) return 'not yet';
+  const m = Math.round((Date.now() - t) / 60_000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h} hr ago`;
+  return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+};
+
+/**
+ * Parked in 14.0 (not shown; server/companionsync.js starts only with NOTEAPP_COMPANION_SYNC=1), kept for 14.1.
+ * Companion sync: Selah Companion on an iPad takes a copy of your sermons, lessons and studies over your own Wi-Fi.
+ * Off until switched on; then an iPad is paired once by scanning a code.
+ */
+export function CompanionSync() {
   const dialog = useDialog();
   const [s, setS] = useState(null);
-  useEffect(() => { api.ipadExportSettings().then(setS).catch(() => setS(null)); }, []);
-  if (!s?.desktop) return null;
-  const save = async (folder) => {
-    try { const r = await api.setIpadExportSettings({ folder }); setS((x) => ({ ...x, folder: r.folder })); } catch (e) { dialog.toast(e.message, 'error', 7000); }
+  const [busy, setBusy] = useState(false);
+  const refresh = useCallback(() => api.companionSync().then(setS).catch(() => setS(null)), []);
+  useEffect(() => { refresh(); }, [refresh]);
+  if (!s) return null;
+  const toggle = async () => {
+    setBusy(true);
+    try { setS(await api.setCompanionSync(!s.on)); } catch (e) { dialog.toast(e.message, 'error', 7000); }
+    setBusy(false);
   };
-  const choose = async () => {
-    const picked = await electron()?.pickFolder({ title: 'Choose a folder your iPad can open', defaultPath: s.folder ?? s.suggested });
-    if (picked) await save(picked);
+  const pair = async () => {
+    try {
+      const code = await api.pairCompanion();
+      await dialog.open((c) => <PairDialog code={code} close={c} />);
+      refresh();
+    } catch (e) { dialog.toast(e.message, 'error', 7000); }
+  };
+  const remove = async (d) => {
+    if (!(await dialog.confirm({ title: `Remove ${d.name}?`, message: 'It stops syncing. What it already has stays on the iPad until you remove it there.', okLabel: 'Remove', danger: true }))) return;
+    try { setS(await api.removeCompanion(d.id)); } catch (e) { dialog.toast(e.message, 'error'); }
   };
   return (
     <>
-      <h3>Selah Companion (iPad)</h3>
       <div className="about-row">
         <span className="muted">
-          {s.folder ? <>Export for iPad saves sermons and lessons in <strong>{s.folder}</strong>.</>
-            : <>Export for iPad (in Preach and Teach, and the builders’ last step) can save straight into a folder your iPad opens, in iCloud Drive, OneDrive or Google Drive. Suggested: <strong>{s.suggested}</strong></>}
+          {!s.on ? <>Sync with Selah Companion on your iPad over this Wi-Fi: your sermons, lessons and studies, ready to preach and teach from with no connection. Nothing goes through the internet.</>
+            : s.error ? <span className="form-error">{s.error}</span>
+              : s.listening ? <>On. Your iPad syncs whenever it and this PC are on the same Wi-Fi and Selah is open.</>
+                : <>Starting…</>}
         </span>
         <span className="about-btns">
-          {!s.folder && <button className="btn btn-small btn-primary" onClick={() => save(s.suggested)}>Use this folder</button>}
-          <button className="btn btn-small" onClick={choose}>{s.folder ? 'Change…' : 'Choose…'}</button>
-          {s.folder && <button className="btn btn-small" onClick={() => save(null)}>Stop using it</button>}
+          {s.on && <button className="btn btn-small btn-primary" onClick={pair} disabled={!s.listening}><Icon name="plus" size={14} /> Pair an iPad</button>}
+          <button className="btn btn-small" onClick={toggle} disabled={busy}>{s.on ? 'Turn off' : 'Turn on'}</button>
         </span>
       </div>
+      {s.on && s.devices.length > 0 && (
+        <ul className="companion-devices">
+          {s.devices.map((d) => (
+            <li key={d.id}>
+              <Icon name="tablet" size={16} />
+              <span className="companion-device-name">{d.name}</span>
+              <span className="muted">Last synced {ago(d.last_seen_at)}</span>
+              <button className="btn btn-small" onClick={() => remove(d)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </>
+  );
+}
+
+function PairDialog({ code, close }) {
+  const dialog = useDialog();
+  const [left, setLeft] = useState(() => code.expires_at - Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setLeft(code.expires_at - Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [code.expires_at]);
+  const mins = Math.max(0, Math.ceil(left / 60_000));
+  return (
+    <div className="stack-form">
+      <h2>Pair an iPad</h2>
+      <div className="companion-pair">
+        {left > 0 ? <div className="qr-box" role="img" aria-label="QR code for Selah Companion" dangerouslySetInnerHTML={{ __html: code.qr }} /> : <div className="qr-box qr-loading" />}
+        <ol className="companion-steps">
+          <li>On the iPad, open <strong>Selah Companion</strong>.</li>
+          <li>Tap <strong>Sync with Selah Desktop</strong>, then <strong>Scan code</strong>.</li>
+          <li>Point the camera at this code. The iPad and this PC must be on the same Wi-Fi.</li>
+        </ol>
+      </div>
+      <p className="muted">{left > 0 ? `The code works for ${mins} more minute${mins === 1 ? '' : 's'}, for one iPad.` : 'This code has expired. Close this and pair again.'}</p>
+      <p className="muted">The first time, Windows may ask whether Selah can use your network. Choose <strong>Private networks</strong>.</p>
+      <div className="modal-actions">
+        {/* For an iPad whose camera can't be used: paste the code into Selah Companion instead. */}
+        <button type="button" className="btn" disabled={left <= 0} onClick={() => navigator.clipboard?.writeText(code.code).then(() => dialog.toast('Code copied'), () => dialog.toast('Couldn’t copy it', 'error'))}>Copy code</button>
+        <button type="button" className="btn btn-primary" onClick={() => close()}>Done</button>
+      </div>
+    </div>
   );
 }
 
@@ -268,8 +334,7 @@ export function DesktopAppRow() {
   };
 
   const switchServer = async () => {
-    const r = await dialog.open((c) => <ServerDialog close={c} current={s.server} />);
-    if (r !== null && r !== undefined) await e.setServer(r);
+    await dialog.open((c) => <ServerDialog close={c} current={s.server} connect={(url) => e.setServer(url)} />);
   };
 
   if (!s) return null;
@@ -294,8 +359,8 @@ export function DesktopAppRow() {
         </div>
       )}
       <div className="about-row">
-        <span className="muted">{s.server ? 'Use the library on this computer instead (Offline), or another Selah Cloud server.' : 'Use a Selah Cloud server instead of the library on this computer (yours stays here).'}</span>
-        <button className="btn btn-small" onClick={switchServer}>{s.server ? 'Change…' : 'Connect to a server…'}</button>
+        <span className="muted">{s.server ? 'Use the library on this computer instead (Offline), or another Selah server.' : 'Sign in to your Selah server instead of using the library on this computer (yours stays here).'}</span>
+        <button className="btn btn-small" onClick={switchServer}>{s.server ? 'Change…' : 'Sign in to your Selah server…'}</button>
       </div>
     </>
   );
@@ -333,20 +398,32 @@ function PinDialog({ close, hello }) {
   );
 }
 
-function ServerDialog({ close, current }) {
+/** Typed address → checked by the app (selahServer in desktop-app/main.cjs), which relaunches signed in to it. */
+function ServerDialog({ close, current, connect }) {
   const [url, setUrl] = useState(current ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const go = async (value) => {
+    setBusy(true); setError('');
+    try { await connect(value); close(null); } catch (err) {
+      setError(String(err?.message ?? err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ''));
+      setBusy(false);
+    }
+  };
   return (
-    <form className="stack-form" onSubmit={(e) => { e.preventDefault(); close(url.trim()); }}>
-      <h2>Selah Cloud server</h2>
+    <form className="stack-form" onSubmit={(e) => { e.preventDefault(); go(url.trim()); }}>
+      <h2>Sign in to your Selah server</h2>
       <p className="modal-message">
-        Your Selah address, e.g. https://you.example.org. You sign in there as in a browser, and sharing and the phone
-        remote work. The library on this computer stays where it is; choose Offline to go back to it.
+        Your Selah server’s address, like selah.example.org: one you run, or your church’s. You sign in there as
+        in a browser, and the phone remote works. The library on this computer stays where it is; choose Offline to go back to it.
       </p>
-      <input className="input" autoFocus placeholder="https://" value={url} onChange={(e) => setUrl(e.target.value)} />
+      <input className="input" autoFocus placeholder="selah.example.org" inputMode="url" autoCapitalize="off" spellCheck={false}
+        value={url} onChange={(e) => setUrl(e.target.value)} />
+      {error && <p className="form-error" role="alert">{error}</p>}
       <div className="modal-actions">
-        {current && <button type="button" className="btn" onClick={() => close('')}>Use Offline</button>}
+        {current && <button type="button" className="btn" disabled={busy} onClick={() => go('')}>Use Offline</button>}
         <button type="button" className="btn" onClick={() => close(null)}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={!/^https:\/\/[^/\s]+/.test(url.trim())}>Connect</button>
+        <button type="submit" className="btn btn-primary" disabled={busy || !url.trim()}>{busy ? 'Checking…' : 'Connect'}</button>
       </div>
     </form>
   );

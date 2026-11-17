@@ -9,7 +9,7 @@ import ExportWordDialog from './ExportWordDialog.jsx';
 import { presentNote, printHandout } from './PresentMode.jsx';
 import { teachNote } from './PreachMode.jsx';
 import { openShare } from './SharingDialogs.jsx';
-import { serverMode } from '../mode.js';
+import { canShare } from '../mode.js';
 import { newStudy, openStudyBuilder } from './StudyBuilder.jsx';
 import { openLessonBuilder, writeLesson } from './LessonBuilder.jsx';
 import { chooseMethod } from './MethodPicker.jsx';
@@ -238,7 +238,7 @@ export default function CourseView({ id, tree, onBack, backLabel = 'Teach', onOp
             c.status === 'active' && { label: 'Mark finished', onClick: () => setStatus('done') },
             c.status !== 'archived' && { label: 'Move to the archive', onClick: () => setStatus('archived') },
             { label: c.course.calendar === false ? 'Put the classes on the calendar' : 'Take the classes off the calendar', onClick: () => run(() => api.updateCourse(c.id, { course: { calendar: c.course.calendar === false } })) },
-            serverMode() === 'tenant' && { label: 'Share…', onClick: () => openShare(dialog, { kind: 'study', id: c.id, title: c.title }) },
+            canShare() && { label: 'Share…', onClick: () => openShare(dialog, { kind: 'study', id: c.id, title: c.title }) },
             'sep',
             { label: 'Delete course…', danger: true, onClick: remove },
           ]} />

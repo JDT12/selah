@@ -28,7 +28,7 @@ function DeleteAccountDialog({ tenant, close }) {
   return (
     <form className="stack-form" onSubmit={submit}>
       <h2>Delete your account?</h2>
-      <p>Every note, notebook, attachment, task and setting in this Selah is deleted, along with your host’s backups of it. You’ll be signed out everywhere and this address will stop working.</p>
+      <p>Every note, notebook, attachment, task and setting in this Selah is deleted, along with the server’s backups of it. You’ll be signed out everywhere and this address will stop working.</p>
       <p><strong>This can’t be undone.</strong> Download your data first if you might want it.</p>
       <label className="field-label" htmlFor="delete-confirm">Type <code>{tenant}</code> to confirm</label>
       <input id="delete-confirm" className="input" autoComplete="off" value={typed} onChange={(e) => setTyped(e.target.value)} />
@@ -66,7 +66,7 @@ export default function AccountPane({ onDeleted }) {
           <div className="about-row">
             <span className="muted">
               {a.hostBackup?.ok ? `Your Selah host backs up everything every night. Last backup: ${when(a.hostBackup.at)}.`
-                : a.hostBackup ? `Your host’s last backup didn’t finish (${when(a.hostBackup.at)}). They’ve been told.`
+                : a.hostBackup ? `Your Selah admin’s last backup didn’t finish (${when(a.hostBackup.at)}). They’ve been told.`
                   : 'Your Selah host backs up everything every night; the first backup hasn’t run yet.'}
               {' '}You can also keep your own encrypted copy, every night in your OneDrive, an S3 bucket or on a WebDAV server, or downloaded whenever you like (Data &amp; backup).
             </span>
@@ -84,7 +84,7 @@ export default function AccountPane({ onDeleted }) {
         <>
           <h3>Delete account</h3>
           <div className="about-row">
-            <span className="muted">Deletes this Selah, everything in it and your host’s backups of it.</span>
+            <span className="muted">Deletes this Selah, everything in it and the server’s backups of it.</span>
             <button className="btn btn-small btn-danger-text" onClick={remove}>Delete account…</button>
           </div>
         </>

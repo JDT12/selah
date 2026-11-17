@@ -14,16 +14,16 @@
   <div class="choices" id="choices">
     <button class="choice" id="offline" type="button">
       <span class="ic" aria-hidden="true">💻</span>
-      <span><strong>On this computer</strong><span>Works offline, no account or sign-in. Selah backs it up automatically to a folder you choose (OneDrive, iCloud Drive or Dropbox keeps a copy off this computer).</span></span>
+      <span><strong>Use Selah on this computer</strong><span>Works offline, no account or sign-in. Selah backs it up automatically to a folder you choose (OneDrive, iCloud Drive or Dropbox keeps a copy off this computer).</span></span>
     </button>
     <button class="choice" id="connect" type="button">
       <span class="ic" aria-hidden="true">☁️</span>
-      <span><strong>On a Selah Cloud server</strong><span>Your church’s or your own server. Use it from your phone and other computers too, and share with others there.</span></span>
+      <span><strong>Sign in to your Selah server</strong><span>A Selah you or your church runs on its own server. Use it from your phone and other computers too.</span></span>
     </button>
   </div>
   <form id="server" hidden>
-    <label for="url">Your Selah address</label>
-    <input id="url" type="url" placeholder="https://you.example.org" autocomplete="url" required>
+    <label for="url">Your Selah server’s address</label>
+    <input id="url" type="text" inputmode="url" placeholder="selah.example.org" autocomplete="url" autocapitalize="off" spellcheck="false" required>
     <div class="row">
       <button class="btn" type="button" id="back">Back</button>
       <button class="btn primary" type="submit">Connect</button>

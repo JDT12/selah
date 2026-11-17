@@ -8,7 +8,7 @@ import { useDialog } from './Dialogs.jsx';
 import AccountPane from './AccountPane.jsx';
 import { WhatsNewDialog } from './WhatsNew.jsx';
 import { isDesktopEdition, isHosted, isOwnServer } from '../mode.js';
-import { DesktopAppRow, DesktopBackups, IpadExportFolder } from './DesktopSettings.jsx';
+import { DesktopAppRow, DesktopBackups } from './DesktopSettings.jsx';
 import { OffsiteBackupRow } from './OffsiteBackup.jsx';
 import { BackupDownloadRow } from './BackupDownload.jsx';
 import ImportDialog from './ImportDialog.jsx';
@@ -21,6 +21,7 @@ import { ZoteroConnectDialog } from './ZoteroDialogs.jsx';
 import { BibleSettings } from './BibleDialogs.jsx';
 import { LogosSettingsDialog } from './LogosDialog.jsx';
 import { InstallAppRow } from './InstallApp.jsx';
+import { PhoneAppRow } from './PhoneAppRow.jsx';
 import { useStoredState } from '../useStoredState.js';
 import SidebarDialog from './SidebarDialog.jsx';
 import CreditsPane from './CreditsPane.jsx';
@@ -169,6 +170,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
         ) : (
           <>
             {!isDesktopApp() && <InstallAppRow cert={cert} />}
+            {!isDesktopEdition() && <PhoneAppRow />}
             {window.selahDesktop?.kind === 'electron' ? <DesktopAppRow /> : <WindowsAppRow />}
           </>
         )}
@@ -202,7 +204,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
     ),
     data: (
       <>
-        {isDesktopEdition() ? <><DesktopBackups /><IpadExportFolder /></> : isOwnServer() ? (
+        {isDesktopEdition() ? <DesktopBackups /> : isOwnServer() ? (
           <>
             <h3>Off-site backup</h3>
             <OffsiteBackupRow />
@@ -496,7 +498,7 @@ function WindowsAppRow() {
   if (isDesktopApp()) {
     return (
       <div className="about-row">
-        <span className="muted">This older Windows app no longer gets updates. Install Selah Desktop, choose “On a Selah Cloud server” and type this Selah’s address ({location.origin}); then uninstall this one.</span>
+        <span className="muted">This older Windows app no longer gets updates. Install Selah Desktop, choose “Sign in to your Selah server” and type this Selah’s address ({location.origin}); then uninstall this one.</span>
         <a className="btn btn-small" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">Download</a>
       </div>
     );
@@ -505,7 +507,7 @@ function WindowsAppRow() {
   if (!system) return null;
   return (
     <div className="about-row">
-      <span className="muted">Selah Desktop for {system}: its own window, a {system === 'Mac' ? 'menu-bar' : 'tray'} icon, quick capture, notifications, and slides full screen on a second monitor. Choose “On a Selah Cloud server” when it opens to use this Selah in it. <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{system === 'Windows' ? 'All downloads' : system === 'Mac' ? 'Intel Mac or other downloads' : '.deb or other downloads'}</a></span>
+      <span className="muted">Selah Desktop for {system}: its own window, a {system === 'Mac' ? 'menu-bar' : 'tray'} icon, quick capture, notifications, and slides full screen on a second monitor. Choose “Sign in to your Selah server” when it opens to use this Selah in it. <a href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">{system === 'Windows' ? 'All downloads' : system === 'Mac' ? 'Intel Mac or other downloads' : '.deb or other downloads'}</a></span>
       <button className="btn btn-small" onClick={() => downloadDesktop(system)}>Download</button>
     </div>
   );
