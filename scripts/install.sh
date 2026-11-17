@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
-# Selah Cloud: install it on your own server in one go (12.0). On a fresh Ubuntu 24.04 (or newer) server, signed in
-# over SSH as a user with sudo (not root):
+# Selah on your own server, in one go (12.0; 14.1 asks which Selah first). On a fresh Ubuntu 24.04 (or newer) server,
+# signed in over SSH as a user with sudo (not root):
 #
 #   curl -fsSL https://raw.githubusercontent.com/JDT12/selah/main/scripts/install.sh -o install.sh && bash install.sh
 #
-# It asks for your domain, how HTTPS should be proven (Let's Encrypt, or a private certificate for a server on your
-# own network), an email for Let's Encrypt and where you'll open the admin console from; checks the DNS; then sets the server up the same way the original Selah Cloud server is set up:
+# First it asks which Selah: Selah Cloud (one person or family) goes on to scripts/install-cloud.sh. For Selah Ministry
+# it asks for your domain, how HTTPS should be proven (Let's Encrypt, or a private certificate for a server on your own
+# network), an email for Let's Encrypt and where you'll open the admin console from; checks the DNS; then sets up:
 #   - Docker for the Selahs (one container each), Node.js, Caddy (the HTTPS gateway), the firewall's port 443
 #   - the admin console and gateway as services that start at boot
-#   - the first release, built into the image every Selah runs from
+#   - the first release, from Selah's published image (ghcr.io/jdt12/selah)
 # Then it asks for the admin password and, if you like, makes the first Selah and prints its setup link.
 # Safe to run again: each step checks what's already there. The docs (docs/cloud-install.md) explain each question.
 set -euo pipefail
@@ -32,7 +33,22 @@ ask() { # ask "Question" default -> REPLY
 if [[ "${ID:-}" != ubuntu ]]; then say "This was written for Ubuntu ($PRETTY_NAME found); carrying on, but other systems aren't tested."; fi
 sudo -v || fail "This user needs sudo."
 
-step "Selah Cloud"
+step "Which Selah?"
+say "  1  Selah Cloud: one Selah for you (or your family) at one address, e.g. selah.example.org."
+say "  2  Selah Ministry: a Selah for each person in a church or ministry, run from an admin console."
+ask "Choose 1 or 2" "${SELAH_PRODUCT:-1}"
+case "$REPLY" in
+  1|cloud)
+    here="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
+    if [[ -f "$here/install-cloud.sh" ]]; then exec bash "$here/install-cloud.sh"; fi
+    curl -fsSL "${SELAH_RAW:-https://raw.githubusercontent.com/JDT12/selah/main}/scripts/install-cloud.sh" -o /tmp/selah-install-cloud.sh \
+      || fail "Couldn't download the Selah Cloud installer."
+    exec bash /tmp/selah-install-cloud.sh ;;
+  2|ministry) ;;
+  *) fail "Choose 1 or 2." ;;
+esac
+
+step "Selah Ministry"
 say "Each Selah lives at <name>.<your domain> (e.g. jason.selah.example.org), and the admin console at"
 say "admin.<your domain>. Point a wildcard DNS record (*.<domain>, type A) at this server first (on your own"
 say "network: see the third certificate choice below)."
@@ -129,9 +145,14 @@ if ! npm run --silent admin -- status 2>/dev/null | grep -q '✓ admin password'
 fi
 npm run --silent admin -- install
 
-step "First release (builds the image every Selah runs from: a few minutes)"
-# sg: the docker group may not be in this login session yet.
-sg docker -c "npm run --silent admin -- prepare-release --main"
+step "First release (the image every Selah runs from: a few minutes)"
+# 14.1: the published image of this version (ghcr.io/jdt12/selah), so nothing is built here; built from this code
+# only if it isn't published (a test of unreleased code). sg: the docker group may not be in this session yet.
+V="$(node -p "require('./package.json').version")"
+if ! sg docker -c "npm run --silent admin -- prepare-release --pull $V --main"; then
+  say "Selah $V isn't published as an image; building it here instead."
+  sg docker -c "npm run --silent admin -- prepare-release --main"
+fi
 
 step "Done"
 ADMIN_URL="https://admin.$DOMAIN"

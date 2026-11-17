@@ -3,7 +3,7 @@ import path from 'node:path';
 import { DatabaseSync, backup } from 'node:sqlite';
 import { getSetting, setSetting } from '../db.js';
 import {
-  alert, cloud, getTenant, listTenants, mustTenant, startJob, updateTenant,
+  alert, cloud, getTenant, imageName, listTenants, mustTenant, startJob, updateTenant,
 } from './store.js';
 import { paths, repoRoot } from './paths.js';
 import { crashLoop, releaseDir, run, runner } from './runner.js';
@@ -131,15 +131,69 @@ export function prepareRelease({ channel = 'beta' } = {}) {
         const b = await run('docker', ['build', '-t', `selah:${version}`, tmp], { timeout: 1_800_000 });
         if (!b.ok) throw new Error(`docker build: ${b.stderr.trim().split('\n').slice(-3).join(' ')}`);
       }
-      fs.renameSync(tmp, dest);
-      if (channel === 'main') {
-        setSetting('current_release', version);
-        if (getSetting('beta_release') === version) setSetting('beta_release', '');
-      } else {
-        setSetting('beta_release', version);
-      }
-      await pruneReleases();
+      await finishPrepared(tmp, dest, version, channel);
       job.finish(true, { release: version, channel: channel === 'main' ? 'main' : 'beta' });
+    } catch (e) {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      job.finish(false, { error: e.message });
+    } finally {
+      busy = null;
+    }
+  })();
+  return { jobId: job.id, release: version };
+}
+
+/** A prepared release folder takes its place, and becomes main or the beta. */
+async function finishPrepared(tmp, dest, version, channel) {
+  fs.renameSync(tmp, dest);
+  if (channel === 'main') {
+    setSetting('current_release', version);
+    if (getSetting('beta_release') === version) setSetting('beta_release', '');
+  } else {
+    setSetting('beta_release', version);
+  }
+  await pruneReleases();
+}
+
+/**
+ * Prepares a published version (14.1) instead of this server's own code: pulls <image>:<version> from the registry
+ * (ghcr.io/jdt12/selah unless the cloud settings name another), tags it selah:<version> for the runner, and copies
+ * its /app out to releases/<version> (rolling back, version checks and the process runner read the folder). Docker
+ * only. A beta (x.y.z-beta.n) goes in as the beta unless channel is 'main'; a release goes in as main unless 'beta'.
+ */
+export function pullRelease({ version, channel } = {}) {
+  if (updateRunning()) throw httpError(409, 'An update is already running.');
+  if (cloud().runner !== 'docker') throw httpError(409, 'Getting a published version needs the Docker runner.');
+  if (!/^\d+\.\d+\.\d+(-beta\.\d+)?$/.test(String(version ?? ''))) throw httpError(400, 'Which version? For example 14.1.0.');
+  const ch = channel ?? (version.includes('-') ? 'beta' : 'main');
+  const dest = path.join(paths.releases, version);
+  if (fs.existsSync(dest)) throw httpError(409, `Release ${version} is already prepared.`);
+  const job = startJob('prepare');
+  busy = { jobId: job.id, phase: 'Downloading' };
+  (async () => {
+    const tmp = `${dest}.tmp`;
+    const remote = `${imageName()}:${version}`;
+    const box = `selah-extract-${version}`;
+    try {
+      fs.rmSync(tmp, { recursive: true, force: true });
+      job.phase(busy.phase = `Downloading ${remote}`);
+      const p = await run('docker', ['pull', remote], { timeout: 1_800_000 });
+      if (!p.ok) throw new Error(`docker pull: ${p.stderr.trim().split('\n').slice(-2).join(' ')}`);
+      const t = await run('docker', ['tag', remote, `selah:${version}`], { timeout: 60_000 });
+      if (!t.ok) throw new Error(`docker tag: ${t.stderr.trim()}`);
+      job.phase(busy.phase = 'Copying the code out of the image');
+      await run('docker', ['rm', '-f', box], { timeout: 60_000 });
+      const c = await run('docker', ['create', '--name', box, `selah:${version}`], { timeout: 120_000 });
+      if (!c.ok) throw new Error(`docker create: ${c.stderr.trim()}`);
+      try {
+        const cp = await run('docker', ['cp', `${box}:/app`, tmp], { timeout: 900_000 });
+        if (!cp.ok) throw new Error(`docker cp: ${cp.stderr.trim()}`);
+      } finally {
+        await run('docker', ['rm', '-f', box], { timeout: 60_000 });
+      }
+      if (versionIn(tmp) !== version) throw new Error(`The image holds Selah ${versionIn(tmp) ?? '(unknown)'}, not ${version}.`);
+      await finishPrepared(tmp, dest, version, ch);
+      job.finish(true, { release: version, channel: ch === 'main' ? 'main' : 'beta', pulled: remote });
     } catch (e) {
       fs.rmSync(tmp, { recursive: true, force: true });
       job.finish(false, { error: e.message });
@@ -174,6 +228,13 @@ async function pruneImages() {
   const have = new Set(listReleases().map((r) => r.release));
   for (const tag of listed.stdout.split('\n').map((s) => s.trim())) {
     if (/^\d+\.\d+\.\d+/.test(tag) && !have.has(tag)) await run('docker', ['rmi', `selah:${tag}`], { timeout: 120_000 });
+  }
+  // A pulled release also carries its registry name (ghcr.io/…/selah:<version>).
+  const pulled = await run('docker', ['images', '--format', '{{.Tag}}', imageName()], { timeout: 60_000 });
+  if (pulled.ok) {
+    for (const tag of pulled.stdout.split('\n').map((s) => s.trim())) {
+      if (/^\d+\.\d+\.\d+/.test(tag) && !have.has(tag)) await run('docker', ['rmi', `${imageName()}:${tag}`], { timeout: 120_000 });
+    }
   }
   // Removing the tag can leave the image behind, unnamed, still holding its disk space.
   await run('docker', ['image', 'prune', '-f'], { timeout: 600_000 });

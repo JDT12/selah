@@ -61,6 +61,9 @@ export const config = {
   product,
   // Kept for code from before 14.0 (and /api/session's edition field): 'desktop' or 'server'.
   edition,
+  // 14.1: Selah Cloud running in its container (docker/cloud/compose.yaml): Caddy in front, a setup link instead of
+  // npm run set-password, nightly backups in the server, updates through the updater beside it.
+  cloudContainer: product === 'cloud' && process.env.NOTEAPP_CLOUD_CONTAINER === '1',
   desktopKey,
   secretKey,
   // Desktop: automatic .selahbak backups go here (the app chooses the folder; NOTEAPP_BACKUP_DIR).

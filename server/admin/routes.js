@@ -12,6 +12,8 @@ import {
 } from './store.js';
 import { paths, repoRoot } from './paths.js';
 import { dockerAvailable, runner } from './runner.js';
+import { publishedVersions } from './registry.js';
+import { imageName } from './store.js';
 import { allowedRanges, certificateInfo, gatewayStatus, pushGateway, PRIVATE_RANGES } from './gateway.js';
 import {
   changeTenant, createTenant, deleteTenant, restartTenant, resumeTenant, setupLink, suspendTenant,
@@ -19,7 +21,7 @@ import {
 import * as backups from './backups.js';
 import { backupKind, passphraseFits } from '../backupfile.js';
 import {
-  betaRelease, currentRelease, listReleases, prepareRelease, promoteRelease, releaseVersion, repoVersion, rollBack, rollingUpdate, updateRunning,
+  betaRelease, currentRelease, listReleases, prepareRelease, promoteRelease, pullRelease, releaseVersion, repoVersion, rollBack, rollingUpdate, updateRunning,
 } from './releases.js';
 import { DEMO_SLUG, demoResetRunning, resetDemo } from './demo.js';
 import { monitorState, runMonitorNow } from './monitor.js';
@@ -269,6 +271,23 @@ export default async function adminRoutes(app) {
       tenants: listTenants().map((t) => ({ slug: t.slug, status: t.status, release: t.release, previousRelease: t.previousRelease, version: releaseVersion(t.release), running: t.health?.version ?? null })),
       docker: cloud().runner === 'docker' ? await dockerAvailable() : null,
     }));
+    // The versions published on the registry (14.1), for Get on the Updates page. null fields when it can't be reached.
+    admin.get('/api/admin/releases/published', async (req) => {
+      try {
+        const p = await publishedVersions(imageName(), { fresh: req.query?.fresh === '1' });
+        return { image: p.image, latest: p.latest, beta: p.beta, error: null };
+      } catch (e) {
+        return { image: imageName(), latest: null, beta: null, error: `Couldn’t check for new versions (${e.message}).` };
+      }
+    });
+    // Body: { version, channel? }: downloads a published version and prepares it (as main for a release, beta for a beta).
+    admin.post('/api/admin/releases/pull', async (req) => {
+      const version = String(req.body?.version ?? '');
+      const channel = ['main', 'beta'].includes(req.body?.channel) ? req.body.channel : undefined;
+      const r = pullRelease({ version, channel });
+      auth.logEvent('release-prepared', req, { release: r.release, channel: channel ?? (version.includes('-') ? 'beta' : 'main'), pulled: true });
+      return r;
+    });
     // Body: { channel: 'beta' (default) | 'main' }.
     admin.post('/api/admin/releases/prepare', async (req) => {
       const r = prepareRelease({ channel: req.body?.channel === 'main' ? 'main' : 'beta' });

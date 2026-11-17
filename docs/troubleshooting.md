@@ -13,6 +13,20 @@
 ## Selah Cloud
 
 ```bash
+selah status
+selah logs
+```
+
+| Problem | What to do |
+| --- | --- |
+| A browser says the certificate isn't valid | Let's Encrypt needs ports 80 and 443 open and the address pointing at the server; `selah logs` shows nothing about it, but `docker compose -f ~/selah-cloud/compose.yaml logs caddy` does |
+| Lost the setup link, forgot the password, or lost the two-step phone | `selah setup-link`: open the link and choose a new password |
+| An update didn't finish | `selah status` shows the last update; the old version keeps running if the new one didn't start |
+| Nothing answers after a reboot | `selah start` (Docker starts it by itself; check `systemctl status docker`) |
+
+## Selah Ministry
+
+```bash
 cd ~/selah
 npm run admin -- status
 journalctl --user -u selah-admin -n 100
@@ -30,7 +44,7 @@ Selah's log.
 | Lost the console's two-step phone | `npm run admin -- reset-two-step`, then sign in and set it up again |
 | Someone forgot their password | Console → Tenants → **Setup link**: they choose a new password |
 | A Selah shows "Paused" | Console → Tenants → **Resume** |
-| The Selah apps don't get pushes | `npm run admin -- push-keys` shows which keys are set ([Phones, tablets and notifications](cloud-install.md#5-phones-tablets-and-notifications)). Reminders still come from the phone itself; on Android 14 and later, people turn on on-time reminders in the app's Settings |
+| The Selah apps don't get pushes | `npm run admin -- push-keys` shows which keys are set ([Phones, tablets and notifications](ministry-install.md#5-phones-tablets-and-notifications)). Reminders still come from the phone itself; on Android 14 and later, people turn on on-time reminders in the app's Settings |
 | Nothing answers after a reboot | `systemctl --user status selah-admin selah-gateway`. Linger must be on: `loginctl show-user $USER -p Linger` |
 
 ### Server maintenance

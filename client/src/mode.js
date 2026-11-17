@@ -12,9 +12,11 @@ export const setServerInfo = (s) => {
   // A server from before 14.0 sends only edition ('desktop' or 'server').
   const product = PRODUCTS.includes(s?.product) ? s.product
     : mode !== 'single' ? 'ministry' : s?.edition === 'desktop' ? 'desktop' : 'cloud';
-  info = { mode, tenant: s?.tenant ?? null, product };
+  info = { mode, tenant: s?.tenant ?? null, product, container: !!s?.container };
 };
 export const serverMode = () => info.mode;
+/** Selah Cloud in its container (14.1, docker/cloud/): set up by a setup link, updated from Settings. */
+export const cloudContainer = () => info.product === 'cloud' && info.container;
 export const selahProduct = () => info.product;
 export const isHosted = () => info.mode !== 'single';
 export const tenantName = () => info.tenant;

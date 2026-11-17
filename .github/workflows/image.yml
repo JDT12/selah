@@ -1,0 +1,63 @@
+# Selah's image (14.1): when a release tag (vX.Y.Z or vX.Y.Z-beta.N) is pushed to the public repository, builds
+# docker/image.Dockerfile for Intel/AMD and ARM servers and pushes it to the GitHub Container Registry:
+#   ghcr.io/<owner>/selah:<version>   every tag
+#   ghcr.io/<owner>/selah:latest      releases only
+#   ghcr.io/<owner>/selah:beta        betas only
+# Self-hosted Selah Cloud and Selah Ministry installs pull these instead of building Selah themselves.
+# The first push makes the package private: set it to Public once (the package's settings on GitHub).
+name: Selah image
+
+on:
+  push:
+    tags: ['v[0-9]*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag to build (e.g. v14.1.0)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Work out the version
+        id: v
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          VERSION="${TAG#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] || { echo "Not a version tag: $TAG"; exit 1; }
+          IMAGE="ghcr.io/${OWNER,,}/selah"
+          TAGS="$IMAGE:$VERSION"
+          if [[ "$VERSION" == *-* ]]; then TAGS="$TAGS,$IMAGE:beta"; else TAGS="$TAGS,$IMAGE:latest"; fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ref=$TAG" >> "$GITHUB_OUTPUT"
+          echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.v.outputs.ref }}
+      - name: Check the code's version matches the tag
+        run: test "$(node -p "require('./package.json').version")" = "${{ steps.v.outputs.version }}"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/image.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.v.outputs.version }}
+          tags: ${{ steps.v.outputs.tags }}
+          push: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

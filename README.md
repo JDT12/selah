@@ -14,17 +14,18 @@ Free software for pastors, teachers and seminary students: notes, Bible study, t
 - **Notes**: a block editor, tags, templates, linked notes, version history, Cornell notes, handwriting to text,
   pictures, recordings and PDFs, quick capture and a web clipper, tasks, a calendar and prayer lists.
 
-## Two ways to use it
+## Three ways to use it
 
-| | Selah Desktop | Selah Cloud |
-| --- | --- | --- |
-| For | One person on a Windows PC, Mac or Linux computer | A church, class or group, each person with their own Selah |
-| Get it | [Download the installer](https://github.com/JDT12/selah/releases/latest) | [Install it on your own server](docs/cloud-install.md) with one command |
-| Your notes | On your PC, backed up automatically to a folder you choose | On your server, backed up every night |
-| From a phone or another computer | No (one PC; export to share) | Yes, in any browser or as an installed app |
+| | Selah Desktop | Selah Cloud | Selah Ministry |
+| --- | --- | --- | --- |
+| For | One person on a Windows PC, Mac or Linux computer | You (or your family), on your own server | A church, class or group, each person with their own Selah |
+| Get it | [Download the installer](https://github.com/JDT12/selah/releases/latest) | [Install it on your server](docs/cloud-install.md) with one command | [Install it on your server](docs/ministry-install.md) with one command |
+| Your notes | On your PC, backed up automatically to a folder you choose | On your server, backed up every night off the server | On the server, every Selah backed up every night |
+| From a phone or another computer | No (one PC; export to share) | Yes: any browser, Selah Desktop, the Selah apps | Yes: any browser, Selah Desktop, the Selah apps |
+| Sharing between people | No | No (export or print) | Yes |
 
 The guides are at **[jdt12.github.io/selah](https://jdt12.github.io/selah/)** (also in [docs/](docs/index.md)):
-installing Desktop or Cloud, DNS and HTTPS, backups, updates and troubleshooting.
+installing Desktop, Cloud or Ministry, DNS and HTTPS, backups, updates and troubleshooting.
 
 ## Building from source
 

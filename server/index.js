@@ -53,6 +53,7 @@ import { addCornellTemplate } from './cornell.js';
 import { eventRoutes } from './events.js';
 import desktopBackups, { scheduleDesktopBackups, seedDesktopDemo } from './desktopbackup.js';
 import tenant, { quotaCheck, startTenant } from './tenant.js';
+import cloudUpdate from './cloudupdate.js';
 import sharing, { startSharing } from './sharing.js';
 import { securityHeaders } from './headers.js';
 
@@ -173,6 +174,7 @@ await app.register(backupDownload);
 await app.register(restorePoints);
 await app.register(notebookFile);
 await app.register(tenant);
+await app.register(cloudUpdate);
 await app.register(sharing);
 
 if (fs.existsSync(config.clientDir)) {

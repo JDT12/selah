@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Selah Cloud: update a self-hosted server to the newest release (12.0). From the app folder, as the user Selah runs as:
+# Selah Ministry: update a self-hosted server to the newest release (12.0). From the app folder, as the user Selah runs as:
 #
 #   bash scripts/update.sh            the newest release (vX.Y.Z)
 #   bash scripts/update.sh v12.1.0    a given one
 #   bash scripts/update.sh --beta     the newest beta too (vX.Y.Z-beta.N)
 #
-# What it does: fetches the release, builds it, restarts the admin console on it, prepares it as a release (its
-# image) and moves every Selah to it, one at a time, checking each comes back. A Selah that doesn't is put back on
-# the release it was on. To move one back by hand later: npm run admin -- rollback <name>.
+# What it does: fetches the release, builds the console, restarts the admin console on it, gets the release's
+# published image (14.1; built here only if it isn't published) and moves every Selah to it, one at a time, checking
+# each comes back. A Selah that doesn't is put back on the release it was on. To move one back by hand later:
+#   npm run admin -- rollback <name>.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export PATH="$HOME/.local/node/current/bin:$HOME/.local/bin:$PATH"
@@ -42,8 +43,14 @@ sleep 3
 systemctl --user is-active --quiet selah-admin.service && echo "ok" || { echo "The admin console didn't start: journalctl --user -u selah-admin" >&2; exit 1; }
 
 step "Release"
-CH=--main; [[ "$REF" == *-* ]] && CH=""
-sg docker -c "npm run --silent admin -- prepare-release $CH"
+# 14.1: the published image of this version (ghcr.io/jdt12/selah); built here only if it isn't published.
+CH=--main; [[ "$REF" == *-* ]] && CH="--beta"
+if ! sg docker -c "npm run --silent admin -- prepare-release --pull ${REF#v} $CH"; then
+  echo "Selah ${REF#v} isn't published as an image; building it here instead."
+  [[ "$CH" == --beta ]] && CH=""
+  sg docker -c "npm run --silent admin -- prepare-release $CH"
+fi
+[[ "$CH" == --beta ]] && CH=""
 
 step "Updating every Selah"
 if [[ -n "$CH" ]]; then sg docker -c "npm run --silent admin -- update" || echo "(Nothing to update, or see the message above.)"

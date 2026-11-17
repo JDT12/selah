@@ -4,7 +4,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { config } from './config.js';
 import { installUnpacked, scrubRestoredDb } from './backupfile.js';
 
-// Selah Desktop: a restore staged by server/desktopbackup.js, put in place before db.js opens notes.db.
+// Selah Desktop (and Selah Cloud's container, 14.1): a restore staged by server/desktopbackup.js, put in place before
+// db.js opens notes.db.
 export const PENDING = path.join(config.dataDir, 'restore-pending');
 export const BEFORE = path.join(path.dirname(config.storageDir), 'storage-before-restore');
 
@@ -21,7 +22,7 @@ export function applyPendingRestore() {
   fs.rmSync(BEFORE, { recursive: true, force: true });
   if (fs.existsSync(config.storageDir)) fs.renameSync(config.storageDir, BEFORE);
   fs.mkdirSync(config.storageDir, { recursive: true });
-  fs.writeFileSync(config.storageMarker, 'Selah Desktop library. Do not delete.\n');
+  fs.writeFileSync(config.storageMarker, `Selah ${config.product === 'desktop' ? 'Desktop' : 'Cloud'} library. Do not delete.\n`);
   // The restore points belong with the library they were taken of; keep them with the old one.
   const key = path.join(config.dataDir, 'wordpress.key');
   if (fs.existsSync(key) && fs.existsSync(path.join(dir, 'config', 'wordpress.key'))) {
@@ -35,6 +36,14 @@ export function applyPendingRestore() {
       if (t.name !== 'share_comments') fix.exec(`DELETE FROM "${t.name}"`);
     }
     fix.exec("DELETE FROM settings WHERE key IN ('password_hash', 'totp', 'recovery_codes', 'user_notice')");
+    // Selah Cloud keeps its own sign-in (saved when the restore was staged): the restored library opens with the
+    // password, two-step sign-in and username this Selah already had, not the backup's. (Sessions were cleared by
+    // scrubRestoredDb, so everyone signs in again.)
+    const keep = path.join(PENDING, 'signin.json');
+    if (fs.existsSync(keep)) {
+      const put = fix.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)');
+      for (const [k, v] of Object.entries(JSON.parse(fs.readFileSync(keep, 'utf8')))) if (v != null) put.run(k, String(v));
+    }
   } finally {
     fix.close();
   }

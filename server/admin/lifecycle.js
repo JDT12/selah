@@ -119,7 +119,7 @@ export async function deleteTenant(slug, why = 'admin') {
     fs.renameSync(p.dir, path.join(paths.trash, `${slug}-${stamp()}`));
   }
   db.prepare('DELETE FROM tenant_events WHERE slug = ?').run(slug);
-  (await import('./sharing.js')).forgetTenant(slug);
+  await (await import('./sharing.js')).forgetTenant(slug).catch(() => {});
   const { purgeHostBackup } = await import('./backups.js');
   await purgeHostBackup(slug).catch((e) => alert(slug, 'warning', 'purge-failed', `${slug}’s host backup couldn’t be removed: ${e.message}`));
   alert(null, 'info', 'tenant-deleted', `${slug} was deleted${why === 'requested' ? ' (they asked to delete their account)' : ''}. Its folder is kept in trash for ${TRASH_DAYS} days.`, { quiet: 0 });

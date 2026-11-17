@@ -17,6 +17,47 @@ const CHANNEL = {
 };
 const plural = (n) => `${n} tenant${n === 1 ? '' : 's'}`;
 
+/**
+ * Published versions (14.1): what GitHub's registry has, with Get to download one and prepare it (a release as main,
+ * a beta as the beta), so this server never builds Selah itself.
+ */
+function PublishedCard({ data, off, track }) {
+  const [pub, setPub] = useState(null);
+  const [checking, setChecking] = useState(false);
+  const check = async (fresh) => {
+    setChecking(true);
+    try { setPub(await adminApi.published(fresh)); } catch (e) { setPub({ error: e.message }); }
+    setChecking(false);
+  };
+  useEffect(() => { check(false); }, []);
+  const have = new Set(data.releases.map((r) => r.version));
+  const row = (version, kind) => version && (
+    <div className="adm-result" key={kind}>
+      <span>
+        <strong>{version}</strong> {kind === 'beta' ? <Badge kind="busy">Beta</Badge> : <Badge kind="good">Release</Badge>}{' '}
+        <span className="muted">{have.has(version) ? 'Prepared here' : kind === 'beta' ? 'Gets prepared as the beta, for the demo first' : 'Gets prepared as main'}</span>
+      </span>
+      {!have.has(version) && (
+        <button className={`btn btn-small${kind === 'beta' ? '' : ' btn-primary'}`} disabled={off}
+          onClick={() => track(`Get ${version}`, () => adminApi.pullRelease(version))}>Get {version}</button>
+      )}
+    </div>
+  );
+  return (
+    <Card title="Published Versions" icon="download" className="adm-wide"
+      actions={<button className="btn btn-small" disabled={checking} onClick={() => check(true)}>{checking ? 'Checking…' : 'Check again'}</button>}>
+      {!pub ? <p className="muted">Checking…</p> : pub.error ? <p className="form-error">{pub.error}</p> : (
+        <>
+          {row(pub.latest, 'release')}
+          {row(pub.beta, 'beta')}
+          {!pub.latest && !pub.beta && <p className="card-empty">Nothing published yet.</p>}
+          <p className="muted adm-hint">From <code>{pub.image}</code>. Get downloads a version and prepares it; then update tenants below.</p>
+        </>
+      )}
+    </Card>
+  );
+}
+
 export default function Updates({ go }) {
   const dialog = useDialog();
   const { data, error, reload } = useLoad(() => adminApi.releases(), [], 10_000);
@@ -116,6 +157,8 @@ export default function Updates({ go }) {
         {busy && <p className="adm-busy"><span className="offsite-spinner" aria-hidden="true" /> {busy}…</p>}
         {!busy && data.running?.phase && <p className="adm-busy"><span className="offsite-spinner" aria-hidden="true" /> {data.running.phase}…</p>}
       </Card>
+
+      {data.docker && <PublishedCard data={data} off={off} track={track} />}
 
       <Card title="Tenants" icon="users" className="adm-wide">
         <div className="adm-update-bar">

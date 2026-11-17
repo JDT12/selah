@@ -21,6 +21,10 @@
 //                          copy this code (built) into a release for tenants, and with Docker build its image. It's a
 //                          beta: only the tenants you move to it (the demo first) run it, until it's promoted.
 //                          --main makes it main straight away (urgent fixes). (Console: Updates → Prepare)
+//   prepare-release --pull [<version>] [--beta | --main]
+//                          download a published version (ghcr.io/jdt12/selah:<version>; Docker only) instead of
+//                          this code: no version = the newest release (--beta: the newest beta). A release goes in as
+//                          main and a beta as the beta, unless --beta or --main says otherwise. (Console: Updates → Get)
 //   promote [<version>]    the beta becomes main: new tenants start on it and update moves tenants to it
 //   update [<name> …] [--beta | --release <version>]
 //                          move tenants (all, or those named) to the main release (or the beta, or that release), one
@@ -362,10 +366,27 @@ WantedBy=default.target
   }
   case 'prepare-release': {
     const rel = await import('../server/admin/releases.js');
-    const channel = flag('--main') ? 'main' : 'beta';
-    const { jobId, release } = rel.prepareRelease({ channel });
+    let channel = flag('--main') ? 'main' : flag('--beta') ? 'beta' : null;
+    let started;
+    if (flag('--pull')) {
+      // A published version (14.1): --pull 14.1.0, or --pull alone for the newest release (--beta: the newest beta).
+      let version = argv[argv.indexOf('--pull') + 1];
+      if (!version || version.startsWith('--')) {
+        const reg = await import('../server/admin/registry.js');
+        const p = await reg.publishedVersions(store.imageName(), { fresh: true });
+        version = channel === 'beta' ? p.beta : p.latest;
+        if (!version) fail(`${p.image} has no ${channel === 'beta' ? 'beta newer than the latest release' : 'release'} yet.`);
+      }
+      started = rel.pullRelease({ version, channel: channel ?? undefined });
+      channel = channel ?? (version.includes('-') ? 'beta' : 'main');
+      console.log(`Getting Selah ${version} (a few minutes)…`);
+    } else {
+      channel = channel === 'main' ? 'main' : 'beta';
+      started = rel.prepareRelease({ channel });
+      console.log(`Preparing release ${started.release}${c.runner === 'docker' ? ' and building its image (a few minutes)' : ''}…`);
+    }
+    const { jobId, release } = started;
     rel.holdCliLock(`Preparing ${release}`, jobId);
-    console.log(`Preparing release ${release}${c.runner === 'docker' ? ' and building its image (a few minutes)' : ''}…`);
     let last = '';
     while (rel.runningHere()) {
       const ph = rel.runningHere()?.phase ?? '';

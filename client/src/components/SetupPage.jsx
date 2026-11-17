@@ -4,7 +4,7 @@ import { appKind } from './Login.jsx';
 import { CodeField, RecoveryCodes, codeOk } from './SecuritySettings.jsx';
 
 /**
- * The page a setup link opens (/#setup=<token>, made in the admin console): choose a username, email and password,
+ * The page a setup link opens (/#setup=<token>, made in the admin console, or by Selah Cloud when it first starts): choose a username, email and password,
  * set up an authenticator app (recommended; since 10.0 "Skip for now" leaves it for Settings → Security), save the
  * recovery codes. The token leaves the address bar as soon as the page has read it.
  */
@@ -118,7 +118,7 @@ export default function SetupPage() {
                 <label className="setup-label" htmlFor="setup-email">Email</label>
                 <input id="setup-email" className="input" type="email" autoComplete="email" placeholder="you@example.com"
                   value={email} onChange={(e) => setEmail(e.target.value)} />
-                <p className="muted setup-note">You can sign in with either one. Your Selah admin uses the email to reach you about your account.</p>
+                <p className="muted setup-note">You can sign in with either one.{info?.product === 'cloud' ? ' Selah sends nothing to the email.' : ' Your Selah admin uses the email to reach you about your account.'}</p>
                 <label className="setup-label" htmlFor="setup-password">Password</label>
                 <input id="setup-password" className="input" type="password" autoComplete="new-password" placeholder={`Password (at least ${min} characters)`}
                   value={password} onChange={(e) => setPassword(e.target.value)} aria-label="Password" />

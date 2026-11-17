@@ -4,6 +4,61 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+Selah 14.1: Selah Cloud and Selah Ministry install from a published image, and the share hub.
+
+### Added
+- **Published image** (`docker/image.Dockerfile`, `.github/workflows/image.yml`): each release and beta tag on the
+  public repository builds Selah from source for Intel/AMD and ARM servers and pushes `ghcr.io/jdt12/selah:<version>`
+  (plus `latest` for a release, `beta` for a beta). Self-hosted installs pull it; nothing is built on the server.
+- **Selah Cloud install** (`docker/cloud/`, `scripts/install-cloud.sh`): one Selah at one address, run by Docker
+  Compose as three containers: Selah (read-only, no capabilities, never reachable except through Caddy), Caddy for
+  HTTPS (Let's Encrypt, or `tls internal` on your own network) and an updater. The installer pulls the newest image,
+  takes the compose file, Caddyfile, updater and `selah` command out of it (so they match its version), writes `.env`
+  and starts it. `scripts/install.sh` now asks Selah Cloud or Selah Ministry first.
+- **Setup in the browser for Selah Cloud**: in its container (`NOTEAPP_CLOUD_CONTAINER=1`, `config.cloudContainer`)
+  Selah makes its library folder on first start and a 30-day setup link (the same page a Ministry setup link opens),
+  printed to its log and by the installer. `scripts/setup-link.mjs` (`selah setup-link`) makes a new one, or a reset
+  link once a password is set. The sign-in page says so when nothing is set up yet.
+- **Updates for Selah Cloud** (Settings → About → Updates, `CloudUpdates.jsx`, `server/cloudupdate.js`): shows a newer
+  published release and updates in one click. Selah copies its database (`pre-update.db`) and asks the updater
+  (`docker/cloud/updater.sh`, through a request file in a shared folder: it has no port), which pulls the version,
+  restarts Selah on it and waits for it to be healthy; if it crashes or isn't healthy within five minutes, it goes
+  back to the old version with the database as it was. `selah update [version]` does the same from the server.
+- **Replace the library from a backup file on Selah Cloud** (Settings → Data & backup → Replace the library;
+  `CloudRestoreRow`, `PUT /api/cloud/restore/upload`, `POST /api/cloud/restore`): a backup from Selah Desktop, another
+  Selah Cloud or a Ministry Selah is uploaded, checked and staged with Desktop's restore (`stageRestore`, now
+  exported), then Selah restarts and puts it in place before opening the library (`applyPendingRestore`, now also for
+  Selah Cloud's container). The library it replaces goes to `storage-before-restore`, and Selah Cloud keeps its own
+  sign-in (password, two-step, username and email, saved beside the staged restore); everyone signs in again. The
+  prompt dialog takes `secret` (a password field, not trimmed) and `message`.
+- **Share hub** (`server/hub/`, `node server/hub/main.js`): sharing between Ministry Selahs moves out of the admin
+  console into a hub of its own, with one database for contacts, shares, the shared notes (one copy however many people
+  see them), attachments and comments, and an event queue for each Selah (`GET /v1/events`, a waiting request). Each
+  Selah reaches it with its own key (`NOTEAPP_HUB_URL`, `NOTEAPP_HUB_KEY`) over its own Docker network
+  (`<prefix>-net-<name>`, a /29 from `cloud.netBase`, default 10.201.0.0/16, so Docker's pools never run out), which
+  only it and the hub (alias `hub`) are on: Selahs still can't reach each other. The hub's console port listens only
+  on its first network (`NOTEAPP_HUB_CONTROL_IFACE=eth0`), published on 127.0.0.1. Every request is checked against
+  the hub's records (contacts, owner, people, sharing on), never what a Selah says.
+- **Selahs read what's shared with them from the hub** (`server/sharing.js`): no copy in the recipient's library or
+  `sharing/in` folders; attachments stream from the hub, Copy fetches them as it needs them. The owner keeps its own
+  record (`shares_out`, `share_people`) and sends a snapshot when its notes change (attachments the hub hasn't got
+  first). The pages' API is unchanged. The first time a Selah reaches a hub that has the console's contacts, it sends
+  its shares and their comments in and empties its 8.0 tables and snapshot folders.
+- **The console runs the hub** (`server/admin/hub.js`): a container (`<prefix>-hub`, records in `<cloud root>/hub`)
+  on the newest release that has it, or a service with the process runner; every minute it checks the hub, tells it
+  each Selah's name, key, whether it's running and whether it may share, and once moves the 8.0 relay's contacts in.
+  The Sharing page reads the hub's overview. The relay (outbox loops, held messages, snapshot copies) is gone.
+- **Guides for three modes**: `docs/cloud-install.md` is now Selah Cloud (one Selah); the multi-tenant guide moved to
+  `docs/ministry-install.md`. The index, README, backups, updates and troubleshooting guides cover all three.
+- **The `selah` command for Selah Cloud** (`docker/cloud/selah`): status, setup-link, update, logs, start, stop,
+  restart, backup (the whole library as a backup file, `scripts/cloud-backup.mjs`), version. Nightly off-site backups
+  run inside Selah Cloud's container.
+- **Getting a published version on Selah Ministry** (Updates → Published Versions → Get;
+  `npm run admin -- prepare-release --pull [<version>] [--beta|--main]`; `pullRelease` in `server/admin/releases.js`,
+  `server/admin/registry.js`): downloads the image, tags it for the runner and copies its code out to the release
+  folder, so rolling back and version checks work as before. The installer's first release is pulled (built from the
+  code only when that version isn't published). Old pulled images are pruned with their releases.
+
 ## [14.0.0] - 2026-11-17
 
 Selah 14.0: three modes from one codebase, and Selah Companion retired.

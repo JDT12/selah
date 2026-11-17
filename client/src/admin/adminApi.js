@@ -63,6 +63,8 @@ export const adminApi = {
 
   releases: () => request('GET', '/api/admin/releases'),
   prepareRelease: (channel = 'beta') => request('POST', '/api/admin/releases/prepare', { channel }),
+  published: (fresh = false) => request('GET', `/api/admin/releases/published${fresh ? '?fresh=1' : ''}`),
+  pullRelease: (version, channel) => request('POST', '/api/admin/releases/pull', { version, channel }),
   promoteRelease: (release) => request('POST', '/api/admin/releases/promote', { release }),
   update: (release, slugs = null) => request('POST', '/api/admin/releases/update', { release, slugs }),
 

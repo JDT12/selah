@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# The selah command for Selah Cloud (14.1). scripts/install.sh puts it in this folder and links it into
+# /usr/local/bin. Everything it does goes through docker compose in this folder.
+#
+#   selah status            what's running, the version, and the last update
+#   selah setup-link        a one-time link to finish setting up, or to reset a forgotten password or lost phone
+#   selah update [version]  update to the newest release (or that version); the same as Settings → Updates
+#   selah logs              Selah's log (Ctrl+C to stop)
+#   selah start | stop | restart
+#   selah backup [folder]   the whole library as a backup file (into the folder, default ./backups; not encrypted)
+#   selah version
+set -euo pipefail
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cd "$here"
+dc() { docker compose "$@"; }
+envval() { sed -n "s/^$1=//p" .env | tail -1; }
+
+case "${1:-status}" in
+  status)
+    dc ps --format 'table {{.Service}}\t{{.Status}}'
+    echo "Selah $(envval SELAH_VERSION) at https://$(envval SELAH_DOMAIN)"
+    [[ -s updates/status ]] && echo "Last update: $(cat updates/status)"
+    ;;
+  setup-link)
+    shift; dc exec selah node scripts/setup-link.mjs "$@"
+    ;;
+  update)
+    v="${2:-}"
+    if [[ -z "$v" ]]; then
+      v="$(dc exec -T selah node -e "import('./server/admin/registry.js').then(async (m) => console.log((await m.publishedVersions(process.env.NOTEAPP_IMAGE)).latest ?? ''))")"
+      v="$(tr -d '\r\n ' <<<"$v")"
+      [[ -n "$v" ]] || { echo "Couldn't find a published release."; exit 1; }
+    fi
+    if [[ "$v" == "$(envval SELAH_VERSION)" ]]; then echo "Selah is already on $v."; exit 0; fi
+    echo "Saving the library's database, then updating to $v…"
+    dc exec -T selah node -e "import('node:sqlite').then(async ({ backup }) => { const { db } = await import('./server/db.js'); const fs = await import('node:fs'); const f = process.env.NOTEAPP_STORAGE_DIR + '/pre-update.db'; fs.rmSync(f, { force: true }); await backup(db, f); process.exit(0); })"
+    echo "$v" > updates/request
+    while [[ -e updates/request ]]; do sleep 2; done
+    last=""
+    while :; do
+      s="$(cat updates/status 2>/dev/null || true)"
+      [[ "$s" != "$last" ]] && { echo "  $s"; last="$s"; }
+      case "$s" in *'"state":"done"'*|*'"state":"rolled-back"'*|*'"state":"failed"'*) break ;; esac
+      sleep 3
+    done
+    ;;
+  logs) dc logs -f --tail 200 selah ;;
+  start) dc up -d ;;
+  stop) dc stop ;;
+  restart) dc restart selah ;;
+  backup)
+    dest="${2:-$here/backups}"; mkdir -p "$dest"
+    f="selah-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+    dc exec -T selah node scripts/cloud-backup.mjs > "$dest/$f"
+    echo "Saved $dest/$f"
+    ;;
+  version) envval SELAH_VERSION ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

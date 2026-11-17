@@ -1,0 +1,8 @@
+# Selah Cloud's HTTPS (14.1). SELAH_TLS is an email address (a Let's Encrypt certificate; expiry warnings go there)
+# or "internal" (a private certificate for a server on your own network: trust Caddy's root once on each device,
+# from caddy/data/caddy/pki/authorities/local/root.crt).
+{$SELAH_DOMAIN} {
+	tls {$SELAH_TLS}
+	encode zstd gzip
+	reverse_proxy selah:8080
+}

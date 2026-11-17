@@ -1,0 +1,71 @@
+# Selah Cloud (14.1): one Selah on your own server, for one person or a family. scripts/install.sh writes this folder
+# (usually ~/selah-cloud) with a .env beside this file; the `selah` command in it starts, updates and backs it up.
+#
+#   selah    Selah itself, from the published image (ghcr.io/jdt12/selah), never reachable except through caddy
+#   caddy    HTTPS for your domain (Let's Encrypt, or a private certificate on your own network)
+#   updater  does what Settings → Updates asks: moves selah to a new version, and back if it doesn't come up
+#
+# .env (written by the installer):
+#   SELAH_DOMAIN   selah.example.org        SELAH_TLS   you@example.org (Let's Encrypt) or internal
+#   SELAH_VERSION  14.1.0                   SELAH_DIR   this folder's full path (the updater runs compose from it)
+#   SELAH_TZ       America/Chicago          SELAH_IMAGE ghcr.io/jdt12/selah (another registry only for testing)
+name: selah
+
+services:
+  selah:
+    image: ${SELAH_IMAGE:-ghcr.io/jdt12/selah}:${SELAH_VERSION:?set SELAH_VERSION in .env}
+    restart: unless-stopped
+    environment:
+      NOTEAPP_MODE: single
+      NOTEAPP_CLOUD_CONTAINER: '1'
+      NOTEAPP_PORT: '8080'
+      NOTEAPP_TLS: '0'
+      NOTEAPP_TRUST_PROXY: 'true'
+      NOTEAPP_HSTS: '1'
+      NOTEAPP_DATA_DIR: /data/app
+      NOTEAPP_STORAGE_DIR: /data/library
+      NOTEAPP_PUBLIC_URL: https://${SELAH_DOMAIN}
+      NOTEAPP_TZ: ${SELAH_TZ:-America/Chicago}
+      NOTEAPP_UPDATES_DIR: /updates
+      NOTEAPP_IMAGE: ${SELAH_IMAGE:-ghcr.io/jdt12/selah}
+    volumes:
+      - ./data:/data
+      - ./updates:/updates
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/api/session').then((r)=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  caddy:
+    image: caddy:2.10.2
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    environment:
+      SELAH_DOMAIN: ${SELAH_DOMAIN}
+      SELAH_TLS: ${SELAH_TLS:-internal}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./caddy/data:/data
+      - ./caddy/config:/config
+    depends_on: [selah]
+
+  updater:
+    image: docker:28.5-cli
+    restart: unless-stopped
+    working_dir: ${SELAH_DIR:?set SELAH_DIR in .env}
+    entrypoint: ['sh', '${SELAH_DIR}/updater.sh']
+    environment:
+      SELAH_DIR: ${SELAH_DIR}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${SELAH_DIR}:${SELAH_DIR}

@@ -9,7 +9,7 @@ if (config.product === 'desktop' && !fs.existsSync(config.storageMarker)) {
   fs.mkdirSync(config.storageDir, { recursive: true });
   fs.writeFileSync(config.storageMarker, 'Selah Desktop library. Do not delete.\n');
 }
-if (config.product === 'desktop') {
+if (config.product === 'desktop' || config.cloudContainer) {
   try {
     const r = applyPendingRestore();
     if (r) console.log(`Restored the library from ${r.from}.`);
@@ -17,12 +17,21 @@ if (config.product === 'desktop') {
     console.error(`Restoring the library failed: ${e.message}`);
   }
 }
+// Selah Cloud's container (14.1, docker/cloud/compose.yaml) starts its library in its own volume the first time: the
+// volume is the disk, so there's nothing to mount. Only into an empty folder, never over a database already there.
+if (config.cloudContainer && !fs.existsSync(config.storageMarker)
+  && !fs.existsSync(config.dbPath)) {
+  fs.mkdirSync(config.storageDir, { recursive: true });
+  fs.writeFileSync(config.storageMarker, 'Selah Cloud library. Do not delete.\n');
+}
 if (!fs.existsSync(config.storageMarker)) {
   console.error(`Notes storage not found at ${config.storageDir} (is the disk mounted?).\n`
     + 'To set it up, or to move existing notes there, run: npm run move-storage');
   process.exit(1);
 }
 fs.mkdirSync(config.filesDir, { recursive: true });
+// Selah Cloud's container starts with an empty volume: the data folder (temporary backup files, the secrets key) too.
+if (config.cloudContainer) fs.mkdirSync(config.dataDir, { recursive: true });
 
 export const db = new DatabaseSync(config.dbPath);
 

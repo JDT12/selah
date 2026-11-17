@@ -4,8 +4,8 @@ import { adminApi } from './adminApi.js';
 import { Badge, Card, ErrorNote, plural, useLoad, when } from './common.jsx';
 
 /**
- * Sharing between tenants (server/admin/sharing.js): who is connected to whom, what is shared (titles only), the
- * sharing log, and a switch for each tenant.
+ * Sharing between tenants (server/admin/sharing.js; the share hub since 14.1): who is connected to whom, what is shared
+ * (titles only), the sharing log, and a switch for each tenant.
  */
 
 const LOG_LABEL = {
@@ -21,6 +21,7 @@ const LOG_LABEL = {
   'sharing-off': 'had sharing turned off',
   'sharing-on': 'had sharing turned on',
   'tenant-removed': 'was removed from sharing',
+  imported: 'moved in from before the share hub:',
 };
 const KIND = { note: 'Note', notebook: 'Notebook', study: 'Project' };
 
@@ -29,6 +30,7 @@ function logLine(e) {
   if (e.kind === 'shared' || e.kind === 'share-failed') return `${what} “${e.title ?? ''}” with ${e.other}${e.detail && e.kind === 'share-failed' ? ` (${e.detail})` : ''}`;
   if (e.kind === 'share-removed') return `${what} ${e.other}: “${e.title ?? ''}”`;
   if (e.kind === 'share-stopped') return `${what} “${e.title ?? ''}”`;
+  if (e.kind === 'imported') return `${what} ${e.detail ?? ''}`;
   if (e.kind === 'comment' || e.kind === 'reply') return `${what} “${e.title ?? ''}” (to ${e.other})`;
   return e.other ? `${what} ${e.other}` : what;
 }
@@ -49,12 +51,13 @@ export default function Sharing() {
   if (!data) return error ? <ErrorNote error={error} /> : <div className="adm-loading" />;
   return (
     <>
-      <p className="muted adm-intro">People share notes, notebooks and projects with their contacts, read-only, and comment on what’s shared with them. Everything passes through this console, which checks it; it sees titles, never the notes.</p>
+      <p className="muted adm-intro">People share notes, notebooks and projects with their contacts, read-only, and comment on what’s shared with them. Everything goes through the share hub, which checks it and keeps one copy of what’s shared; this page shows titles, never the notes.</p>
       <ErrorNote error={error} />
+      {data.error && <p className="form-error">{data.error}</p>}
       <Card title="Tenants" icon="users" className="adm-wide">
         <div className="adm-table-wrap">
           <table className="adm-table">
-            <thead><tr><th>Tenant</th><th>Contacts</th><th>They share</th><th>Shared with them</th><th>Messages</th><th>Switch</th></tr></thead>
+            <thead><tr><th>Tenant</th><th>Contacts</th><th>They share</th><th>Shared with them</th><th>Hub</th><th>Switch</th></tr></thead>
             <tbody>
               {data.tenants.map((t) => (
                 <tr key={t.slug}>
@@ -62,7 +65,7 @@ export default function Sharing() {
                   <td>{t.contacts}{t.pending ? <span className="muted"> · {t.pending} asked</span> : null}</td>
                   <td>{t.sharing}</td>
                   <td>{t.sharedWith}</td>
-                  <td>{t.held ? <Badge kind="warn">{plural(t.held, 'message')}</Badge> : <span className="muted">{t.connected ? 'Connected' : '–'}</span>}</td>
+                  <td>{t.held ? <Badge kind="warn">{plural(t.held, 'message')} waiting</Badge> : <span className="muted">{t.connected ? 'Connected' : '–'}</span>}</td>
                   <td>
                     <button type="button" className={`btn btn-small ${t.on ? '' : 'btn-primary'}`} disabled={busy === t.slug} onClick={() => toggle(t)}>
                       {t.on ? 'Turn off' : 'Turn on'}

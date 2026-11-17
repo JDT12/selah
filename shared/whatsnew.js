@@ -4,6 +4,17 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.1.0',
+    date: '',
+    title: 'Selah on your own server, made simple',
+    items: [
+      'Selah Cloud, one Selah for you or your family on your own server, now installs with one command and finishes setting up in your browser.',
+      'Selah Cloud updates itself from Settings → About → Updates, and goes back to the version you had if a new one doesn’t start.',
+      'Settings → Data & backup → Replace the library brings a whole library to Selah Cloud from a backup file, such as one from Selah Desktop.',
+      'On Selah Ministry, sharing works the same, now through one share hub that keeps a single copy of what’s shared.',
+    ],
+  },
+  {
     version: '14.0.0',
     date: '2026-11-17',
     title: 'Selah 14: your Selah, your server',

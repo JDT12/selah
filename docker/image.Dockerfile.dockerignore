@@ -1,0 +1,20 @@
+# For docker/image.Dockerfile (a build from source): only what the server and its page are built from. No local
+# installs, builds, data, or the other apps (Selah Desktop is built by its own workflow).
+.git
+.github
+.claude
+node_modules
+client/dist
+data
+notes-data
+desktop
+desktop-app
+wordpress-plugin
+smoke-results
+store-assets
+selah-video-kit
+selah-video-kit.zip
+SelahCompanion-source.zip
+*.log
+companion
+mobile-app

@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { db, getSetting, setSetting } from '../db.js';
 import { encrypt, decrypt } from '../secrets.js';
 import { paths } from './paths.js';
+import { hubEnv, netRange } from './hub.js';
 
 /**
  * The admin console's records: the multi-tenant settings, the tenants, a copy of every tenant's security log,
@@ -90,6 +91,8 @@ export function cloud() {
   const s = json(getSetting('cloud'), {});
   return { ...DEFAULTS, ...s, limits: { ...DEFAULT_LIMITS, ...(s.limits ?? {}) } };
 }
+/** The image releases are pulled from (14.1, Updates → Get): cloud.image, else Selah's published one. */
+export const imageName = () => cloud().image || 'ghcr.io/jdt12/selah';
 export const saveCloud = (patch) => setSetting('cloud', JSON.stringify({ ...json(getSetting('cloud'), {}), ...patch }));
 
 /** Let's Encrypt either way (a public server): HSTS, the console only from listed addresses, renewal by Caddy. */
@@ -202,7 +205,8 @@ export function tenantEnv(t, { docker = false } = {}) {
     NOTEAPP_DATA_DIR: docker ? '/data/data' : p.data,
     NOTEAPP_STORAGE_DIR: docker ? '/data/storage' : p.storage,
     // Caddy, on this machine (or, from inside a container, the Docker bridge).
-    NOTEAPP_TRUST_PROXY: docker ? 'loopback,172.16.0.0/12' : 'loopback',
+    // 14.1: each Selah on its own network (hub.js netRange), so the gateway's connections come from that range.
+    NOTEAPP_TRUST_PROXY: docker ? `loopback,172.16.0.0/12,${netRange()}` : 'loopback',
     NOTEAPP_TZ: t.timeZone,
     NOTEAPP_QUOTA: String(l.quotaMb * 1024 * 1024),
     NOTEAPP_MAX_UPLOAD: String(l.uploadMb * 1024 * 1024),
@@ -210,6 +214,8 @@ export function tenantEnv(t, { docker = false } = {}) {
     NOTEAPP_JOB_TIMEOUT: String(l.jobMinutes * 60_000),
     NOTEAPP_JOB_MEMORY_MB: String(Math.max(128, Math.floor(l.memoryMb / 2))),
     ...(publicTls(c) ? { NOTEAPP_HSTS: '1' } : {}),
+    // 14.1: the share hub (server/admin/hub.js), reached over the Selah's own network with its own key.
+    ...hubEnv(t.slug, { docker }),
   };
   return Object.entries(env).map(([k, v]) => `${k}=${String(v).replace(/[\r\n]/g, '')}`).join('\n') + '\n';
 }

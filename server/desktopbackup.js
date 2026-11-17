@@ -222,7 +222,9 @@ function backupFile(body) {
   return p;
 }
 
-async function stageRestore(file, passphrase) {
+/** Checks a backup file and unpacks it into restore-pending/ for db.js to put in place at the next start. Selah
+ * Desktop's Go back and Import a library, and Selah Cloud's Replace the library (14.1, server/cloudupdate.js). */
+export async function stageRestore(file, passphrase) {
   if (!fs.existsSync(file)) throw httpError(404, 'That backup file isn’t there any more.');
   const kind = backupKind(file);
   if (kind === 'zip') throw httpError(400, 'That’s an older “Download all my data” file. Use Import instead.');

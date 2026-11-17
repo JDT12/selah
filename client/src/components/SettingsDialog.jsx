@@ -7,7 +7,8 @@ import { version } from '../../../package.json';
 import { useDialog } from './Dialogs.jsx';
 import AccountPane from './AccountPane.jsx';
 import { WhatsNewDialog } from './WhatsNew.jsx';
-import { isDesktopEdition, isHosted, isOwnServer } from '../mode.js';
+import { cloudContainer, isDesktopEdition, isHosted, isOwnServer } from '../mode.js';
+import CloudUpdatesRow, { CloudRestoreRow } from './CloudUpdates.jsx';
 import { DesktopAppRow, DesktopBackups } from './DesktopSettings.jsx';
 import { OffsiteBackupRow } from './OffsiteBackup.jsx';
 import { BackupDownloadRow } from './BackupDownload.jsx';
@@ -208,6 +209,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
           <>
             <h3>Off-site backup</h3>
             <OffsiteBackupRow />
+            {cloudContainer() && <CloudRestoreRow />}
           </>
         ) : (
           <>
@@ -279,12 +281,15 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
           <span className="muted">What’s new in Selah, update by update.</span>
           <button className="btn btn-small" onClick={() => dialog.open((c) => <WhatsNewDialog close={c} />)}>What’s new</button>
         </div>
+        {cloudContainer() && <CloudUpdatesRow />}
         {isOwnServer() && (
           <>
-            <div className="about-row">
-              <span className="muted">Looking after the server: the selah command, starting at boot, updates, backups, fixes.</span>
-              <button className="btn btn-small" onClick={() => openGuide('maintenance')}><Icon name="settings" size={14} /> Maintenance guide</button>
-            </div>
+            {!cloudContainer() && (
+              <div className="about-row">
+                <span className="muted">Looking after the server: the selah command, starting at boot, updates, backups, fixes.</span>
+                <button className="btn btn-small" onClick={() => openGuide('maintenance')}><Icon name="settings" size={14} /> Maintenance guide</button>
+              </div>
+            )}
             <div className="about-row">
               <span className="muted">Every change in every version, in detail.</span>
               <button className="btn btn-small" onClick={() => dialog.open((c) => <Suspense fallback={null}><ChangelogDialog version={version} close={c} /></Suspense>)}>Full changelog</button>

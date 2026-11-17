@@ -92,11 +92,11 @@ const setupLink = () => {
 };
 
 /** A new one-time setup link token (replacing any earlier one); kind 'invite' or 'reset'. */
-export function newSetupLink(kind = 'invite', days = SETUP_DAYS) {
+export function newSetupLink(kind = 'invite', days = SETUP_DAYS, from = 'admin') {
   const token = crypto.randomBytes(24).toString('base64url');
   const expires = Date.now() + Math.min(30, Math.max(1, days)) * 86400_000;
   setSetting('setup_link', JSON.stringify({ hash: sha256(token), kind, expires, createdAt: Date.now() }));
-  auth.logEvent('setup-link', null, { kind, from: 'admin' });
+  auth.logEvent('setup-link', null, { kind, from });
   return { token, expires };
 }
 
@@ -108,7 +108,9 @@ function checkToken(req) {
   const ok = l && token && crypto.timingSafeEqual(Buffer.from(sha256(token)), Buffer.from(l.hash));
   if (!ok) {
     auth.logEvent('setup-failed', req);
-    throw httpError(404, 'This setup link has expired or was already used. Ask your Selah host for a new one.');
+    throw httpError(404, config.product === 'cloud'
+      ? 'This setup link has expired or was already used. Make a new one on the server: selah setup-link'
+      : 'This setup link has expired or was already used. Ask your Selah admin for a new one.');
   }
   return l;
 }
@@ -192,7 +194,7 @@ async function controlServer(log, mainApp) {
     return { ok: true };
   });
 
-  // Sharing between tenants (8.0): the console reads the outbox and delivers messages here (server/sharing.js).
+  // Sharing between tenants: the console turning it off or on (since 14.1 through the share hub, server/sharing.js).
   sharingControl(app);
   // Push to the apps (13.0): the console sends what's queued with the host's keys (server/push.js).
   pushControl(app);
@@ -285,11 +287,13 @@ function scheduleBackups(log) {
 // ---------- routes ----------
 
 export default async function tenant(app) {
-  if (config.mode === 'tenant') {
+  // Setup links: a Ministry tenant's come from the admin console; Selah Cloud (14.1) makes its own the first time it
+  // starts (startTenant below), and `node scripts/setup-link.mjs` makes a new one.
+  if (config.mode === 'tenant' || config.cloudContainer) {
     app.post('/api/setup/check', async (req) => {
       const l = checkToken(req);
       const who = identity();
-      return { kind: l.kind, tenant: config.tenant, name: process.env.NOTEAPP_TENANT_NAME || null, minPassword: auth.MIN_PASSWORD, expires: l.expires,
+      return { kind: l.kind, product: config.product, tenant: config.tenant, name: process.env.NOTEAPP_TENANT_NAME || null, minPassword: auth.MIN_PASSWORD, expires: l.expires,
         username: who?.username ?? '', email: who?.email ?? '' };
     });
 
@@ -337,7 +341,9 @@ export default async function tenant(app) {
       auth.logEvent(l.kind === 'reset' ? 'setup-reset' : 'setup-done', req, skip ? { twoStep: false } : null);
       return { codes };
     });
+  }
 
+  if (config.mode === 'tenant') {
     app.post('/api/account/delete', async (req, reply) => {
       auth.requireConfirmed(req);
       if (String(req.body?.confirm ?? '').trim().toLowerCase() !== String(config.tenant).toLowerCase()) {
@@ -362,6 +368,20 @@ export default async function tenant(app) {
 
 /** Tenant mode: the control port and the nightly backup (called once the server is listening). */
 export async function startTenant(log, app) {
+  if (config.cloudContainer) {
+    // Selah Cloud in its container (14.1): nightly off-site backups run here (no systemd timer), and until a password
+    // is set it prints a setup link to its log, which the installer shows.
+    scheduleBackups(log);
+    if (!auth.passwordIsSet()) {
+      const l = setupLink() ?? null;
+      if (!l) {
+        const { token } = newSetupLink('invite', 30, 'first-start');
+        const base = process.env.NOTEAPP_PUBLIC_URL || '';
+        log.info(`Finish setting up Selah: ${base}/#setup=${token}`);
+      } else log.info('Selah is waiting for its setup link to be opened. Lost it? Run: selah setup-link');
+    }
+    return;
+  }
   if (config.mode !== 'tenant') return;
   await controlServer(log, app);
   scheduleBackups(log);

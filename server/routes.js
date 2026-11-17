@@ -126,12 +126,14 @@ export default async function routes(app) {
     signInName: !!identity(),
     timeZone: config.timeZone,
     // The private CA and "Trust this device" only exist on a home server; a hosted Selah has a public certificate.
-    cert: config.mode === 'single' ? certInfo() : null,
+    cert: config.mode === 'single' && !config.cloudContainer ? certInfo() : null,
     mode: config.mode,
     tenant: config.tenant,
     // 14.0: 'desktop', 'cloud' or 'ministry' (server/config.js). edition ('desktop' or 'server') stays for older apps.
     product: config.product,
     edition: config.edition,
+    // 14.1: Selah Cloud in its container (docker/cloud/): set up by a setup link, updated from Settings.
+    container: config.cloudContainer,
   }));
 
   app.get('/api/version', async () => ({ version: VERSION }));

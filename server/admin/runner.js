@@ -74,9 +74,12 @@ const dockerRunner = {
     fs.writeFileSync(envFile, tenantEnv(t, { docker: true }), { mode: 0o600 });
     const name = this.name(t.slug);
     await run('docker', ['rm', '-f', name]);
+    // 14.1: its own network, which only it and the share hub are on (server/admin/hub.js).
+    const { ensureNetwork, joinHub } = await import('./hub.js');
+    const net = await ensureNetwork(t.slug);
     const l = t.limits;
     const r = await run('docker', [
-      'run', '-d', '--name', name, '--restart', 'unless-stopped', '--env-file', envFile,
+      'run', '-d', '--name', name, '--restart', 'unless-stopped', '--env-file', envFile, '--network', net,
       '-v', `${p.data}:/data/data`, '-v', `${p.storage}:/data/storage`,
       '-p', `127.0.0.1:${t.port}:8080`, '-p', `127.0.0.1:${t.controlPort}:8081`,
       '--memory', `${l.memoryMb}m`, '--memory-swap', `${l.memoryMb}m`, '--cpus', String(l.cpuPercent / 100), '--pids-limit', String(l.tasks),
@@ -85,6 +88,7 @@ const dockerRunner = {
       this.image(t.release),
     ]);
     if (!r.ok) throw httpError(500, `Couldn’t start ${t.slug}: ${r.stderr.trim() || r.code}`);
+    await joinHub(t.slug).catch(() => {});
   },
   async stop(t) {
     // Asked to stop first (Selah finishes what it's doing and closes its database), then removed.

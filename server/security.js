@@ -208,7 +208,8 @@ export default async function security(app) {
     auth.checkAttempts(req);
     if (closing()) throw httpError(403, 'This account is being deleted.');
     if (!auth.passwordIsSet()) {
-      throw httpError(400, config.mode === 'tenant' ? 'This Selah hasn’t been set up yet. Use the setup link you were sent.'
+      throw httpError(400, config.cloudContainer ? 'This Selah hasn’t been set up yet. Open its setup link (on the server: selah setup-link).'
+        : config.mode === 'tenant' ? 'This Selah hasn’t been set up yet. Use the setup link you were sent.'
         : config.mode === 'admin' ? 'No password set. On the server, run: npm run admin -- set-password' : 'No password set. Run: npm run set-password');
     }
     // 10.0: with a username and email chosen, the first box must be one of them (checked after the password, so a

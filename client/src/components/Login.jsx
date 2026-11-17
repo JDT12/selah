@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { isDesktopApp } from '../desktop.js';
 import { changeServer, isMobileApp } from '../mobile.js';
 import { api } from '../api.js';
-import { serverMode } from '../mode.js';
+import { cloudContainer, serverMode } from '../mode.js';
 import { useDialog } from './Dialogs.jsx';
 import CertificateHelp from './CertificateHelp.jsx';
 
@@ -11,6 +11,7 @@ export const appKind = () => (isMobileApp() ? 'mobile' : isDesktopApp() ? 'windo
 
 const NO_PASSWORD = {
   single: <>No password has been set yet. On the server, run:<br /><code>npm run set-password</code></>,
+  cloud: <>This Selah hasn’t been set up yet. Open the setup link the installer showed you. Lost it? On the server, run:<br /><code>selah setup-link</code></>,
   tenant: <>This Selah hasn’t been set up yet. Open the setup link you were sent to choose your password.</>,
   admin: <>No admin password has been set yet. On the server, run:<br /><code>npm run admin -- set-password</code></>,
 };
@@ -61,7 +62,7 @@ export default function Login({ passwordSet, signInName = false, cert, onDone, t
         <h1 className="wordmark">{title}</h1>
         {subtitle && <p className="login-subtitle muted">{subtitle}</p>}
         {!passwordSet ? (
-          <p className="modal-message">{NO_PASSWORD[serverMode()] ?? NO_PASSWORD.single}</p>
+          <p className="modal-message">{(cloudContainer() ? NO_PASSWORD.cloud : NO_PASSWORD[serverMode()]) ?? NO_PASSWORD.single}</p>
         ) : ticket ? (
           <>
             <p className="login-step">{recovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}</p>

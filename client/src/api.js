@@ -24,10 +24,11 @@ export async function request(method, url, body, retried = false) {
   return data;
 }
 
-function xhrUpload(url, formData, onProgress) {
+function xhrUpload(url, formData, onProgress, method = 'POST') {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
+    xhr.open(method, url);
+    if (method === 'PUT') xhr.setRequestHeader('Content-Type', 'application/octet-stream');
     xhr.setRequestHeader('X-Client-Id', clientId);
     xhr.responseType = 'json';
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
@@ -442,6 +443,11 @@ export const api = {
   setupOffsite: (body) => request('PUT', '/api/offsite', body),
   testOffsite: (body) => request('POST', '/api/offsite/test', body),
   backupDownloadInfo: () => request('GET', '/api/backup/download'),
+  // Selah Cloud in its container (14.1): Settings → Updates.
+  cloudUpdates: (fresh = false) => request('GET', `/api/cloud/updates${fresh ? '?fresh=1' : ''}`),
+  cloudUpdate: (version) => request('POST', '/api/cloud/updates', { version }),
+  cloudRestoreUpload: (file, onProgress) => xhrUpload('/api/cloud/restore/upload', file, onProgress, 'PUT'),
+  cloudRestore: (passphrase) => request('POST', '/api/cloud/restore', { passphrase }),
   startBackupDownload: (encrypt, passphrase) => request('POST', '/api/backup/download', { encrypt, passphrase }),
   offsiteConnectStart: () => request('POST', '/api/offsite/connect/start'),
   offsiteConnectFinish: (url) => request('POST', '/api/offsite/connect/finish', { url }),

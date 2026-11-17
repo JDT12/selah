@@ -93,18 +93,22 @@ export function Modal({ children, onClose }) {
   );
 }
 
-function PromptDialog({ title, label, value = '', okLabel = 'OK', placeholder, close }) {
+// secret: a password field, kept exactly as typed (not trimmed).
+function PromptDialog({ title, label, message, value = '', okLabel = 'OK', placeholder, secret = false, close }) {
   const [v, setV] = useState(value);
   const ref = useRef(null);
   useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  const out = secret ? v : v.trim();
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (v.trim()) close(v.trim()); }}>
+    <form onSubmit={(e) => { e.preventDefault(); if (out) close(out); }}>
       <h2>{title}</h2>
+      {message && <p className="modal-message">{message}</p>}
       {label && <label className="field-label">{label}</label>}
-      <input ref={ref} className="input" value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} />
+      <input ref={ref} className="input" type={secret ? 'password' : 'text'} autoComplete={secret ? 'off' : undefined}
+        value={v} placeholder={placeholder} onChange={(e) => setV(e.target.value)} />
       <div className="modal-actions">
         <button type="button" className="btn" onClick={() => close(null)}>Cancel</button>
-        <button type="submit" className="btn btn-primary" disabled={!v.trim()}>{okLabel}</button>
+        <button type="submit" className="btn btn-primary" disabled={!out}>{okLabel}</button>
       </div>
     </form>
   );

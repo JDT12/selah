@@ -2,6 +2,18 @@
 
 ## Selah Cloud
 
+- **Every night, off the server**: Settings → Data & backup → **Off-site backup** copies your library to OneDrive, S3
+  or WebDAV, encrypted. Set it up on day one: a copy only on the server doesn't survive losing it.
+- **Restore points**: Selah keeps your notes as they were on each of the last 14 days. Settings → Data & backup →
+  **Restore from a backup** brings notes back as copies.
+- **Your own copy**: Settings → Data & backup → **Download a backup** (encrypted with a passphrase), or on the server
+  `selah backup` (into `~/selah-cloud/backups`).
+- **Replacing the whole library** from a backup file (from Selah Desktop, another Selah Cloud or Selah Ministry):
+  Settings → Data & backup → **Replace the library → From a backup file**. The library you had is kept aside on the
+  server in `~/selah-cloud/data/storage-before-restore`, and your sign-in stays the same.
+
+## Selah Ministry
+
 - **Every night** the admin console backs up every Selah (its notes database, attachments and keys) to the
   destinations chosen in the console (Backups): a folder on the server, and off the server through OneDrive, S3 or
   WebDAV, encrypted. Set up an off-server one on day one: a copy only on the server doesn't survive losing it.
@@ -23,9 +35,9 @@
   optionally encrypted.
 - **Go back to a backup** replaces the whole library; the one you had is kept aside.
 - **Restore notes** brings notes back as copies: from the daily restore points or an automatic backup.
-- **Import a library** opens any backup file, including one downloaded from Selah Cloud.
+- **Import a library** opens any backup file, including one downloaded from Selah Cloud or Selah Ministry.
 
 ## Keep these off the server
 
-For Selah Cloud, keep in a password manager: the admin password and two-step recovery codes, the off-server
-backup's passphrase, and the login for your DNS provider.
+For Selah Cloud and Selah Ministry, keep in a password manager: your password and two-step recovery codes (and the
+admin console's, on Ministry), the off-server backup's passphrase, and the login for your DNS provider.
