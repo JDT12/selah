@@ -70,11 +70,10 @@ export const api = {
   account: () => request('GET', '/api/account'),
   deleteAccount: (confirm) => request('POST', '/api/account/delete', { confirm }),
 
-  // Sharing between tenants (8.0, server/sharing.js).
+  // Sharing between tenants (8.0, server/sharing.js; 14.1: everyone who shares is a contact).
   sharing: () => request('GET', '/api/sharing'),
-  addContact: (slug) => request('POST', '/api/sharing/contacts', { slug }),
-  acceptContact: (slug) => request('POST', `/api/sharing/contacts/${encodeURIComponent(slug)}/accept`),
-  removeContact: (slug) => request('DELETE', `/api/sharing/contacts/${encodeURIComponent(slug)}`),
+  setShownToOthers: (listed) => request('PUT', '/api/sharing/me', { listed }),
+  hidePerson: (slug, hidden) => request('POST', `/api/sharing/hide/${encodeURIComponent(slug)}`, { hidden }),
   shareOf: (kind, id) => request('GET', `/api/sharing/item${qs({ kind, id })}`),
   shareItem: (body) => request('PUT', '/api/sharing/item', body),
   stopShare: (id) => request('DELETE', `/api/sharing/out/${id}`),

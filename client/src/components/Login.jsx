@@ -99,7 +99,7 @@ export default function Login({ passwordSet, signInName = false, cert, onDone, t
           </button>
         )}
         {serverMode() === 'tenant' && passwordSet && !ticket && (
-          <p className="muted login-help">Forgot your password, or lost your phone and recovery codes? Ask your Selah host for a reset link.</p>
+          <p className="muted login-help">Forgot your password, or lost your phone and recovery codes? Ask your Selah admin for a reset link.</p>
         )}
       </form>
     </div>

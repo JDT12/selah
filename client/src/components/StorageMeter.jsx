@@ -41,7 +41,7 @@ export default function StorageMeter() {
         {!s.quota && <li><span className="storage-dot is-other" />Other <span className="muted">{formatSize(other)}</span></li>}
         <li><span className="storage-dot is-free" />Free <span className="muted">{formatSize(s.free)}</span></li>
       </ul>
-      {level && <p className="storage-warning">{s.quota ? 'Your storage' : 'The notes disk'} is {level === 'is-full' ? 'almost full' : 'filling up'}.{s.quota ? ' Delete attachments you don’t need, or ask your Selah host for more space.' : ''}</p>}
+      {level && <p className="storage-warning">{s.quota ? 'Your storage' : 'The notes disk'} is {level === 'is-full' ? 'almost full' : 'filling up'}.{s.quota ? ' Delete attachments you don’t need, or ask your Selah admin for more space.' : ''}</p>}
     </div>
   );
 }

@@ -164,7 +164,7 @@ export async function writeBackup(out, { snapshotDb, filesDir, dataDir, certDir 
     'files/                 every attachment, under the names notes.db refers to them by',
     'config/wordpress.key   the key that unlocks the sign-ins stored in notes.db (keep this file private)',
     '',
-    'To restore it: npm run restore -- --file <this file> on a Selah server, or ask your Selah host.',
+    'To restore it: npm run restore -- --file <this file> on a Selah server, or ask your Selah admin.',
   ].join('\n');
   const entries = [
     { name: MANIFEST, data: Buffer.from(JSON.stringify(full, null, 2)) },

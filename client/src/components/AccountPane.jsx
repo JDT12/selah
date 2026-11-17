@@ -65,9 +65,9 @@ export default function AccountPane({ onDeleted }) {
           <h3>Backups</h3>
           <div className="about-row">
             <span className="muted">
-              {a.hostBackup?.ok ? `Your Selah host backs up everything every night. Last backup: ${when(a.hostBackup.at)}.`
+              {a.hostBackup?.ok ? `Your Selah admin backs up everything every night. Last backup: ${when(a.hostBackup.at)}.`
                 : a.hostBackup ? `Your Selah admin’s last backup didn’t finish (${when(a.hostBackup.at)}). They’ve been told.`
-                  : 'Your Selah host backs up everything every night; the first backup hasn’t run yet.'}
+                  : 'Your Selah admin backs up everything every night; the first backup hasn’t run yet.'}
               {' '}You can also keep your own encrypted copy, every night in your OneDrive, an S3 bucket or on a WebDAV server, or downloaded whenever you like (Data &amp; backup).
             </span>
           </div>

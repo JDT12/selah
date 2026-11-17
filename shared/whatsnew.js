@@ -11,7 +11,8 @@ export const WHATS_NEW = [
       'Selah Cloud, one Selah for you or your family on your own server, now installs with one command and finishes setting up in your browser.',
       'Selah Cloud updates itself from Settings → About → Updates, and goes back to the version you had if a new one doesn’t start.',
       'Settings → Data & backup → Replace the library brings a whole library to Selah Cloud from a backup file, such as one from Selah Desktop.',
-      'On Selah Ministry, sharing works the same, now through one share hub that keeps a single copy of what’s shared.',
+      'On Selah Ministry, everyone who shares can share with everyone else, with no contact requests. Shared with me → People has Show me to others, and hides one person’s shares if you’d rather not see them.',
+      'Sharing now goes through one share hub on the server, which keeps a single copy of what’s shared.',
     ],
   },
   {

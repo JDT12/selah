@@ -22,6 +22,8 @@ const LOG_LABEL = {
   'sharing-on': 'had sharing turned on',
   'tenant-removed': 'was removed from sharing',
   imported: 'moved in from before the share hub:',
+  shown: 'showed themselves to others again',
+  hidden: 'hid themselves from others',
 };
 const KIND = { note: 'Note', notebook: 'Notebook', study: 'Project' };
 
@@ -51,7 +53,7 @@ export default function Sharing() {
   if (!data) return error ? <ErrorNote error={error} /> : <div className="adm-loading" />;
   return (
     <>
-      <p className="muted adm-intro">People share notes, notebooks and projects with their contacts, read-only, and comment on what’s shared with them. Everything goes through the share hub, which checks it and keeps one copy of what’s shared; this page shows titles, never the notes.</p>
+      <p className="muted adm-intro">Everyone with sharing on can share notes, notebooks and projects with everyone else here, read-only, and comment on what’s shared with them (each person can hide themselves from others). Everything goes through the share hub, which checks it and keeps one copy of what’s shared; this page shows titles, never the notes.</p>
       <ErrorNote error={error} />
       {data.error && <p className="form-error">{data.error}</p>}
       <Card title="Tenants" icon="users" className="adm-wide">

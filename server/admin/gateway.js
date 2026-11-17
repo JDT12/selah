@@ -113,7 +113,7 @@ export function caddyConfig() {
     },
     ...listTenants().map((t) => ({
       match: [{ host: [tenantHost(t.slug)] }],
-      handle: [t.status === 'active' ? proxy(t.port) : staticPage(503, 'Paused', 'This Selah is paused for now. Your notes are safe; ask your Selah host when it will be back.')],
+      handle: [t.status === 'active' ? proxy(t.port) : staticPage(503, 'Paused', 'This Selah is paused for now. Your notes are safe; ask your Selah admin when it will be back.')],
       terminal: true,
     })),
     ...(site.length ? [{

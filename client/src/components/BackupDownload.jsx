@@ -79,7 +79,7 @@ export function BackupDownloadDialog({ close }) {
       <p className="modal-message">
         A snapshot of your notes, notebooks, tasks, settings and every attachment, made now, as one file. Keep it
         somewhere away from Selah. It can be restored into a Selah server with <code>npm run restore -- --file</code>, or by
-        your Selah host.
+        your Selah admin.
       </p>
       {s && (
         <p className="backup-dl-size">

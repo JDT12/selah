@@ -44,6 +44,14 @@ Selah 14.1: Selah Cloud and Selah Ministry install from a published image, and t
   record (`shares_out`, `share_people`) and sends a snapshot when its notes change (attachments the hub hasn't got
   first). The pages' API is unchanged. The first time a Selah reaches a hub that has the console's contacts, it sends
   its shares and their comments in and empties its 8.0 tables and snapshot folders.
+- **Everyone is a contact on Selah Ministry**: every Selah with sharing on that shows itself to others is every other
+  one's contact (`areContacts` in `server/hub/store.js`); contact requests are gone (the old routes answer 410 at the
+  hub, and the Selah's are removed). **Show me to others** (`tenants.listed`, `PUT /v1/me`, `PUT /api/sharing/me`),
+  on by default: off, nobody can share with you and what you share ends. **Hide their shares** (`hides` table,
+  `POST /v1/hide/:slug`, `POST /api/sharing/hide/:slug`): one person's shares leave your Shared with me and their
+  notifications stop, without telling them. A `people` event refreshes everyone's list when someone is shown,
+  hidden, added or removed. The Contacts dialog becomes **People** (`ContactsDialog` in `SharingDialogs.jsx`), and
+  the Shelf's link says People. The 8.0 contacts table is kept as a record only.
 - **The console runs the hub** (`server/admin/hub.js`): a container (`<prefix>-hub`, records in `<cloud root>/hub`)
   on the newest release that has it, or a service with the process runner; every minute it checks the hub, tells it
   each Selah's name, key, whether it's running and whether it may share, and once moves the 8.0 relay's contacts in.

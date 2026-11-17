@@ -11,7 +11,7 @@ import { byPerson, KIND_ICON, KIND_LABEL, useSharing } from '../sharing.js';
 import { openContacts } from './SharingDialogs.jsx';
 
 /**
- * Shared with me (8.0): what contacts share, grouped by person; a dot marks what's new or changed since I looked.
+ * Shared with me (8.0): what others on the server share with me, grouped by person; a dot marks what's new or changed since I looked.
  * Opening one shows it on its own page (SharedPage). Only in the cloud.
  */
 function SharedWithMe({ words, hit, folded, setFolded, onClose }) {
@@ -19,7 +19,6 @@ function SharedWithMe({ words, hit, folded, setFolded, onClose }) {
   const s = useSharing();
   if (!s?.enabled) return null;
   const people = byPerson(s.sharedWithMe.filter((x) => !words.length || hit(`${x.title} ${x.ownerName}`)));
-  const asking = s.contacts.filter((c) => c.status === 'incoming').length;
   if (words.length && !people.length) return null;
   const open = (id) => { onClose(); window.dispatchEvent(new CustomEvent('noteapp:open-shared', { detail: { id } })); };
   const shown = !folded.shared;
@@ -30,12 +29,12 @@ function SharedWithMe({ words, hit, folded, setFolded, onClose }) {
           <Icon name={shown ? 'chevronDown' : 'chevronRight'} size={14} />
         </button>
         <span className="rp-group-name is-plain">Shared with me</span>
-        <button type="button" className="link-btn rp-contacts" onClick={() => openContacts(dialog)} title="People you share with">
-          Contacts{asking > 0 && <span className="rp-ask">{asking}</span>}
+        <button type="button" className="link-btn rp-contacts" onClick={() => openContacts(dialog)} title="Who you share with, and whether others see you">
+          People
         </button>
       </div>
       {shown && !people.length && (
-        <p className="rp-empty">{s.on ? 'Nothing yet. When a contact shares a note, notebook or project with you, it shows here.' : 'Sharing is turned off for your Selah.'}</p>
+        <p className="rp-empty">{s.on ? 'Nothing yet. When someone shares a note, notebook or project with you, it shows here.' : 'Sharing is turned off for your Selah.'}</p>
       )}
       {shown && people.map((p) => (
         <div key={p.owner} className="rp-person">

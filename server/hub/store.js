@@ -109,7 +109,16 @@ CREATE INDEX IF NOT EXISTS log_at ON log(at);
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+-- 14.1: someone whose shares a person has hidden (Shared with me → Hide), without them being told.
+CREATE TABLE IF NOT EXISTS hides (
+  slug TEXT NOT NULL,                       -- who hides
+  hides TEXT NOT NULL,                      -- whose shares
+  at INTEGER NOT NULL,
+  PRIMARY KEY (slug, hides)
 );`);
+// 14.1: "Show me to others" (on unless the person turns it off): everyone shown, with sharing on, is everyone's contact.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'listed'").get()) db.exec('ALTER TABLE tenants ADD COLUMN listed INTEGER NOT NULL DEFAULT 1');
 
 export const json = (s, fallback) => { try { return JSON.parse(s ?? 'null') ?? fallback; } catch { return fallback; } };
 export const clip = (v, n) => String(v ?? '').trim().slice(0, n);
@@ -143,9 +152,15 @@ export function slugForKey(key) {
 
 // ---------- contacts ----------
 
+/**
+ * On a Ministry server everyone belongs to the same church (14.1): every Selah with sharing on that shows itself to
+ * others is every other one's contact, with no requests. (The contacts table is 8.0's, kept only as a record.)
+ */
 export const pair = (x, y) => (x < y ? [x, y] : [y, x]);
 export const contactRow = (x, y) => db.prepare('SELECT * FROM contacts WHERE a = ? AND b = ?').get(...pair(x, y));
-export const areContacts = (x, y) => contactRow(x, y)?.status === 'accepted';
+export const listed = (slug) => allowed(slug) && !!tenant(slug)?.listed;
+export const areContacts = (x, y) => x !== y && listed(x) && listed(y);
+export const hides = (slug, owner) => !!db.prepare('SELECT 1 FROM hides WHERE slug = ? AND hides = ?').get(slug, owner);
 
 // ---------- shares ----------
 

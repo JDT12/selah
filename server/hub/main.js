@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import Fastify from 'fastify';
 import {
-  allowed, areContacts, clip, contactRow, db, dropShare, emit, eventsFor, getSetting, httpError, json, log, nameOf, pair,
+  allowed, areContacts, clip, db, dropShare, emit, eventsFor, getSetting, hides, httpError, json, listed, log, nameOf, pair,
   peopleOf, setSetting, shareFiles, shareRow, sharesWith, sha256, slugForKey, tenant, tx,
 } from './store.js';
 import { htmlToText } from '../html.js';
@@ -53,11 +53,33 @@ const uid = () => crypto.randomBytes(16).toString('hex');
 
 // ---------- what a Selah sees ----------
 
+/** Everyone I can share with (14.1: everyone shown with sharing on, when I'm shown too), and whose shares I hide. */
 function contactsOf(me) {
-  return db.prepare('SELECT * FROM contacts WHERE a = ? OR b = ?').all(me, me).map((c) => {
-    const slug = c.a === me ? c.b : c.a;
-    return { slug, name: nameOf(slug), status: c.status === 'accepted' ? 'accepted' : c.requested_by === me ? 'outgoing' : 'incoming', at: c.at };
-  }).sort((x, y) => (x.status === 'accepted') - (y.status === 'accepted') || x.name.localeCompare(y.name));
+  if (!listed(me)) return [];
+  return db.prepare('SELECT slug FROM tenants WHERE slug != ?').all(me).map((r) => r.slug).filter(listed)
+    .map((slug) => ({ slug, name: nameOf(slug), status: 'accepted', hidden: hides(me, slug), at: 0 }))
+    .sort((x, y) => x.name.localeCompare(y.name));
+}
+
+/** Tells someone, unless they've hidden the sender's shares. */
+const emitTo = (to, from, msg) => { if (!hides(to, from)) emit(to, msg); };
+
+/** Everyone else's list of people changed (someone shown, hidden, added, removed, or sharing switched). */
+const peopleChanged = (except) => {
+  for (const t of db.prepare('SELECT slug FROM tenants WHERE slug != ?').all(except ?? '')) emit(t.slug, { type: 'people' });
+};
+
+/** What a Selah shares ends, and it comes off what's shared with it (sharing off, or hidden from others). */
+function endFor(slug) {
+  for (const s of db.prepare('SELECT * FROM shares WHERE owner = ?').all(slug)) {
+    for (const p of peopleOf(s.id)) emit(p, { type: 'share-revoked', id: s.id, from: slug });
+    dropShare(s.id);
+  }
+  for (const r of db.prepare('SELECT share_id FROM share_people WHERE slug = ?').all(slug)) {
+    db.prepare('DELETE FROM share_people WHERE share_id = ? AND slug = ?').run(r.share_id, slug);
+    db.prepare('DELETE FROM comments WHERE share_id = ? AND peer = ?').run(r.share_id, slug);
+    emit(slug, { type: 'share-revoked', id: r.share_id, from: shareRow(r.share_id)?.owner ?? '' });
+  }
 }
 
 const unseenWhere = "NOT EXISTS (SELECT 1 FROM comment_seen s WHERE s.comment_id = c.id AND s.slug = ?) AND c.author != ?";
@@ -68,7 +90,8 @@ function sharedWithMe(me) {
       (SELECT COUNT(*) FROM comments c WHERE c.share_id = s.id AND c.peer = ? AND ${unseenWhere}) AS replies
     FROM shares s JOIN share_people p ON p.share_id = s.id AND p.slug = ?
     WHERE EXISTS (SELECT 1 FROM tenants t WHERE t.slug = s.owner AND t.active = 1)
-    ORDER BY s.updated_at DESC`).all(me, me, me, me).map((s) => ({
+      AND NOT EXISTS (SELECT 1 FROM hides h WHERE h.slug = ? AND h.hides = s.owner)
+    ORDER BY s.updated_at DESC`).all(me, me, me, me, me).map((s) => ({
     id: s.id, owner: s.owner, ownerName: nameOf(s.owner), kind: s.kind, title: s.title, allowCopy: !!s.allow_copy,
     allowComments: !!s.allow_comments, project: json(s.project, null), receivedAt: s.added_at, updatedAt: s.updated_at,
     unseen: !s.seen_at || s.seen_at < s.updated_at, isNew: !s.seen_at, notes: s.notes, replies: s.replies,
@@ -119,24 +142,6 @@ function noteOf(s, key) {
 const mustSharing = (me) => { if (!allowed(me)) throw httpError(403, 'Sharing is turned off for your Selah. Ask your Selah admin.'); };
 
 // ---------- changes ----------
-
-/** Everything shared between two Selahs ends (contact removed, or one of them forgotten). */
-function endBetween(x, y) {
-  for (const s of db.prepare('SELECT * FROM shares WHERE owner IN (?, ?)').all(x, y)) {
-    const other = s.owner === x ? y : x;
-    if (!sharesWith(other, s.id)) continue;
-    db.prepare('DELETE FROM share_people WHERE share_id = ? AND slug = ?').run(s.id, other);
-    db.prepare('DELETE FROM comments WHERE share_id = ? AND peer = ?').run(s.id, other);
-    emit(other, { type: 'share-revoked', id: s.id, from: s.owner });
-  }
-}
-
-function accept(me, other) {
-  db.prepare('UPDATE contacts SET status = ?, at = ? WHERE a = ? AND b = ?').run('accepted', Date.now(), ...pair(me, other));
-  log('contact-accepted', me, other);
-  emit(other, { type: 'contact-accepted', from: me, name: nameOf(me) });
-  emit(me, { type: 'contact-accepted', from: other, name: nameOf(other) });
-}
 
 /** A snapshot from the owner: the share's details, who it's for, and its notes (attachments uploaded first). */
 function saveShare(me, id, b) {
@@ -200,12 +205,12 @@ function saveShare(me, id, b) {
   }
   for (const p of ok) {
     if (!before.includes(p)) {
-      emit(p, { type: 'share-new', id, from: me, name: nameOf(me), title });
+      emitTo(p, me, { type: 'share-new', id, from: me, name: nameOf(me), title });
       log('shared', me, p, title, kind);
-    } else if (visible) emit(p, { type: 'share-updated', id, from: me, name: nameOf(me), title });
+    } else if (visible) emitTo(p, me, { type: 'share-updated', id, from: me, name: nameOf(me), title });
   }
   if (refused.length) {
-    emit(me, { type: 'share-error', error: `“${title}” couldn’t be shared with ${refused.map(nameOf).join(', ')}: ${refused.length === 1 ? 'they aren’t' : 'they aren’t all'} contacts, or sharing is off for them.` });
+    emit(me, { type: 'share-error', error: `“${title}” couldn’t be shared with ${refused.map(nameOf).join(', ')}: sharing is off for ${refused.length === 1 ? 'them' : 'some of them'}, or they’re hidden from others.` });
   }
   return { people: ok, refused };
 }
@@ -233,7 +238,7 @@ function newComment(me, s, n, b, peer) {
   db.prepare(`INSERT INTO comments (id, share_id, note_key, thread_id, peer, author, author_name, body, quote, prefix, suffix, created_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(c.id, c.share_id, c.note_key, c.thread_id, c.peer, c.author, c.author_name, c.body, c.quote, c.prefix, c.suffix, c.created_at);
   const to = me === s.owner ? peer : s.owner;
-  emit(to, { type: 'comment', shareId: s.id, noteKey: n.note_key, from: me, name: nameOf(me), reply: me === s.owner });
+  emitTo(to, me, { type: 'comment', shareId: s.id, noteKey: n.note_key, from: me, name: nameOf(me), reply: me === s.owner });
   log(me === s.owner ? 'reply' : 'comment', me, to, s.title);
   return c;
 }
@@ -260,7 +265,31 @@ api.setErrorHandler((err, req, reply) => {
 
 api.get('/health', async () => ({ ok: true, version: VERSION }));
 // ready: the console has moved its older records in (POST /control/import), so a Selah can move its own shares in.
-api.get('/v1/me', async (req) => ({ slug: req.me, name: nameOf(req.me), sharing: allowed(req.me), ready: !!getSetting('imported'), version: VERSION }));
+api.get('/v1/me', async (req) => ({
+  slug: req.me, name: nameOf(req.me), sharing: allowed(req.me), listed: !!tenant(req.me).listed, ready: !!getSetting('imported'), version: VERSION,
+}));
+
+// "Show me to others" (14.1). Turned off, nobody can share with me and I can't share: what's shared both ways ends.
+api.put('/v1/me', async (req) => {
+  const me = req.me;
+  const on = req.body?.listed !== false;
+  if (!!tenant(me).listed === on) return { listed: on };
+  db.prepare('UPDATE tenants SET listed = ? WHERE slug = ?').run(on ? 1 : 0, me);
+  if (!on) endFor(me);
+  log(on ? 'shown' : 'hidden', me);
+  peopleChanged(me);
+  return { listed: on };
+});
+
+// Hides someone's shares from me (or shows them again). They aren't told, and can still share.
+api.post('/v1/hide/:slug', async (req) => {
+  const me = req.me;
+  const other = String(req.params.slug);
+  if (!SLUG.test(other) || other === me || !tenant(other)) throw httpError(404, 'No one by that name here.');
+  if (req.body?.hidden === false) db.prepare('DELETE FROM hides WHERE slug = ? AND hides = ?').run(me, other);
+  else db.prepare('INSERT OR IGNORE INTO hides (slug, hides, at) VALUES (?, ?, ?)').run(me, other, Date.now());
+  return { contacts: contactsOf(me) };
+});
 api.get('/v1/events', async (req) => {
   const after = Number(req.query.after) || 0;
   const wait = Math.min(30_000, Math.max(0, Number(req.query.wait) || 0));
@@ -271,45 +300,11 @@ api.get('/v1/events', async (req) => {
 
 api.get('/v1/contacts', async (req) => ({ contacts: contactsOf(req.me) }));
 
-api.post('/v1/contacts', async (req) => {
-  const me = req.me;
-  mustSharing(me);
-  const to = String(req.body?.to ?? '');
-  if (!SLUG.test(to) || to === me) throw httpError(400, 'Type their Selah name: the first part of their Selah web address.');
-  if (!tenant(to) || !tenant(to).active) throw httpError(404, `There’s no one called “${to}” on this Selah server.`);
-  if (!allowed(to)) throw httpError(409, `${nameOf(to)} can’t take contact requests right now.`);
-  const c = contactRow(me, to);
-  if (c?.status === 'accepted') throw httpError(409, `${nameOf(to)} is already a contact.`);
-  if (c?.status === 'pending' && c.requested_by === to) accept(me, to);
-  else if (!c) {
-    db.prepare('INSERT INTO contacts (a, b, status, requested_by, at) VALUES (?, ?, ?, ?, ?)').run(...pair(me, to), 'pending', me, Date.now());
-    log('contact-request', me, to);
-    emit(to, { type: 'contact-request', from: me, name: nameOf(me) });
-  }
-  return { contacts: contactsOf(me) };
-});
-
-api.post('/v1/contacts/:slug/accept', async (req) => {
-  const me = req.me;
-  mustSharing(me);
-  const other = String(req.params.slug);
-  const c = contactRow(me, other);
-  if (!c || c.status !== 'pending' || c.requested_by !== other) throw httpError(404, 'There’s no request from them.');
-  accept(me, other);
-  return { contacts: contactsOf(me) };
-});
-
-// Declines a request, cancels mine, or removes a contact (which ends everything shared between us).
-api.delete('/v1/contacts/:slug', async (req) => {
-  const me = req.me;
-  const other = String(req.params.slug);
-  if (!contactRow(me, other)) throw httpError(404, 'Not a contact.');
-  db.prepare('DELETE FROM contacts WHERE a = ? AND b = ?').run(...pair(me, other));
-  endBetween(me, other);
-  log('contact-removed', me, other);
-  emit(other, { type: 'contact-removed', from: me });
-  return { contacts: contactsOf(me) };
-});
+// 8.0's requests are gone (14.1: everyone shown is a contact). Older Selahs asking get a plain answer.
+const noRequests = async () => { throw httpError(410, 'Everyone on this server who shares is already in your list.'); };
+api.post('/v1/contacts', noRequests);
+api.post('/v1/contacts/:slug/accept', noRequests);
+api.delete('/v1/contacts/:slug', noRequests);
 
 // ----- my shares -----
 
@@ -562,19 +557,11 @@ control.put('/control/tenants/:slug', async (req) => {
   const on = b.sharing !== false && b.active !== false;
   const wasOn = !!old && !!old.sharing && !!old.active;
   if (old && wasOn && !on) {
-    // Off: what it shares ends, and it comes off what's shared with it (its records stay, so turning it on again
-    // brings back its contacts).
-    for (const s of db.prepare('SELECT * FROM shares WHERE owner = ?').all(slug)) {
-      for (const p of peopleOf(s.id)) emit(p, { type: 'share-revoked', id: s.id, from: slug });
-      dropShare(s.id);
-    }
-    for (const r of db.prepare('SELECT share_id FROM share_people WHERE slug = ?').all(slug)) {
-      db.prepare('DELETE FROM share_people WHERE share_id = ? AND slug = ?').run(r.share_id, slug);
-      db.prepare('DELETE FROM comments WHERE share_id = ? AND peer = ?').run(r.share_id, slug);
-      emit(slug, { type: 'share-revoked', id: r.share_id, from: shareRow(r.share_id)?.owner ?? '' });
-    }
+    // Off (or paused): what it shares ends, and it comes off what's shared with it.
+    endFor(slug);
     log('sharing-off', slug);
   } else if (old && !wasOn && on) log('sharing-on', slug);
+  if (!old || wasOn !== on || old.name !== clip(b.name, 80)) peopleChanged(slug);
   if (!old || !!old.sharing !== (b.sharing !== false)) emit(slug, { type: 'state', on: b.sharing !== false });
   return { ok: true };
 });
@@ -590,11 +577,12 @@ control.delete('/control/tenants/:slug', async (req) => {
     db.prepare('DELETE FROM comments WHERE share_id = ? AND peer = ?').run(r.share_id, slug);
   }
   db.prepare('DELETE FROM share_people WHERE slug = ?').run(slug);
-  for (const c of db.prepare('SELECT * FROM contacts WHERE a = ? OR b = ?').all(slug, slug)) emit(c.a === slug ? c.b : c.a, { type: 'contact-removed', from: slug });
   db.prepare('DELETE FROM contacts WHERE a = ? OR b = ?').run(slug, slug);
+  db.prepare('DELETE FROM hides WHERE slug = ? OR hides = ?').run(slug, slug);
   db.prepare('DELETE FROM events WHERE slug = ?').run(slug);
   db.prepare('DELETE FROM tenants WHERE slug = ?').run(slug);
   log('tenant-removed', slug);
+  peopleChanged(slug);
   return { ok: true };
 });
 
@@ -618,9 +606,9 @@ control.post('/control/import', async (req) => {
 // For the console's Sharing page: titles and who, never the notes.
 control.get('/control/overview', async () => ({
   tenants: db.prepare('SELECT * FROM tenants').all().map((t) => ({
-    slug: t.slug, on: !!t.sharing, active: !!t.active, seenAt: t.seen_at,
-    contacts: db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE status = 'accepted' AND (a = ? OR b = ?)").get(t.slug, t.slug).n,
-    pending: db.prepare("SELECT COUNT(*) AS n FROM contacts WHERE status = 'pending' AND (a = ? OR b = ?)").get(t.slug, t.slug).n,
+    slug: t.slug, on: !!t.sharing, active: !!t.active, listed: !!t.listed, seenAt: t.seen_at,
+    contacts: contactsOf(t.slug).length,
+    pending: 0,
     sharing: db.prepare('SELECT COUNT(*) AS n FROM shares WHERE owner = ?').get(t.slug).n,
     sharedWith: db.prepare('SELECT COUNT(*) AS n FROM share_people WHERE slug = ?').get(t.slug).n,
     waiting: db.prepare('SELECT COUNT(*) AS n FROM events WHERE slug = ?').get(t.slug).n,

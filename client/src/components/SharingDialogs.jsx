@@ -5,7 +5,7 @@ import { useDialog } from './Dialogs.jsx';
 import Icon from './Icon.jsx';
 
 /**
- * Sharing (8.0): sharing a note, notebook or project with contacts (ShareDialog), and the contacts themselves
+ * Sharing (8.0): sharing a note, notebook or project with others on the server (ShareDialog), and People (14.1)
  * (ContactsDialog). Shares are live and read-only; see server/sharing.js.
  */
 
@@ -54,7 +54,7 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
   }).catch((e) => setError(e.message));
   useEffect(() => { load(); }, [kind, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const contacts = state?.contacts.filter((c) => c.status === 'accepted') ?? [];
+  const contacts = state?.contacts ?? [];
   const toggle = (slug) => setPicked((s) => {
     const next = new Set(s);
     if (next.has(slug)) next.delete(slug); else next.add(slug);
@@ -96,19 +96,23 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
         </p>
       ))}
       {!state && !error && <p className="muted">Loading…</p>}
-      {state && !state.enabled && <p className="muted">Sharing is for Selah in the cloud, where your contacts have their own Selah.</p>}
-      {state?.enabled && !state.on && <p className="form-error">Sharing is turned off for your Selah. Ask your Selah host.</p>}
+      {state && !state.enabled && <p className="muted">Sharing is part of Selah Ministry, where everyone you share with has their own Selah.</p>}
+      {state?.enabled && !state.on && <p className="form-error">Sharing is turned off for your Selah. Ask your Selah admin.</p>}
       {state?.enabled && state.on && (
         <>
           <div className="share-people">
             <div className="share-people-head">
               <span className="field-label">Share with</span>
-              <button type="button" className="link-btn" onClick={manage}>Contacts…</button>
+              <button type="button" className="link-btn" onClick={manage}>People…</button>
             </div>
             {contacts.length === 0 && (
               <div className="share-empty">
-                <p>No contacts yet. Add someone by their Selah name, and once they accept you can share with them.</p>
-                <button type="button" className="btn btn-small" onClick={manage}><Icon name="plus" size={14} /> Add a contact</button>
+                {state.me?.listed === false ? (
+                  <>
+                    <p>You’re hidden from others, so you can’t share. Turn on Show me to others to share again.</p>
+                    <button type="button" className="btn btn-small" onClick={manage}>People…</button>
+                  </>
+                ) : <p>No one else on this server shares yet. When others turn sharing on, they show here.</p>}
               </div>
             )}
             {contacts.map((c) => (
@@ -144,10 +148,14 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
   );
 }
 
+/**
+ * People (14.1): everyone on this server who shares, which is who you can share with (no contact requests on a
+ * Ministry server: it's one church). "Show me to others" takes you off everyone's list, and Hide keeps one person's
+ * shares out of your Shared with me without telling them.
+ */
 export function ContactsDialog({ close }) {
   const dialog = useDialog();
   const [state, setState] = useState(null);
-  const [name, setName] = useState('');
   const [error, setError] = useState(null);
   const load = () => api.sharing().then(setState).catch((e) => setError(e.message));
   useEffect(() => {
@@ -160,71 +168,40 @@ export function ContactsDialog({ close }) {
     setError(null);
     try { await fn(); await load(); loadSharing(); if (done) dialog.toast(done); } catch (e) { setError(e.message); }
   };
-  const add = (e) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    run(() => api.addContact(name.trim()), 'Request sent').then(() => setName(''));
-  };
-  const remove = async (c) => {
-    if (!(await dialog.confirm({
-      title: `Remove ${c.name || c.slug}?`,
-      message: 'Everything you share with each other stops, both ways. You can connect again later.',
-      okLabel: 'Remove', danger: true,
+  const shown = state?.me?.listed !== false;
+  const toggleShown = async () => {
+    if (shown && !(await dialog.confirm({
+      title: 'Hide yourself from others?',
+      message: 'Nobody can share with you, and what you share stops. Turn it back on at any time.',
+      okLabel: 'Hide me', danger: true,
     }))) return;
-    run(() => api.removeContact(c.slug), 'Contact removed');
+    run(() => api.setShownToOthers(!shown), shown ? 'You’re hidden from others' : 'Others can share with you again');
   };
   const list = state?.contacts ?? [];
-  const incoming = list.filter((c) => c.status === 'incoming');
-  const outgoing = list.filter((c) => c.status === 'outgoing');
-  const accepted = list.filter((c) => c.status === 'accepted');
   return (
     <div className="contacts-dialog">
-      <h2>Contacts</h2>
-      {state && !state.enabled ? <p className="muted">Sharing is for Selah in the cloud.</p> : (
+      <h2>People</h2>
+      {state && !state.enabled ? <p className="muted">Sharing is part of Selah Ministry.</p> : (
         <>
-          <p className="modal-message">People you can share with. Your Selah name is <strong>{state?.me?.slug ?? '…'}</strong>: give it to someone so they can add you.</p>
-          <form className="contacts-add" onSubmit={add}>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Their Selah name" aria-label="Their Selah name" autoFocus
-              autoCapitalize="none" autoCorrect="off" spellCheck={false} />
-            <button type="submit" className="btn btn-primary" disabled={!name.trim()}>Send request</button>
-          </form>
+          <p className="modal-message">Everyone on this server who shares. You can share with any of them, and they with you.</p>
+          <label className="contact-row contacts-shown">
+            <input type="checkbox" checked={shown} disabled={!state} onChange={toggleShown} />
+            <span className="share-person-name">Show me to others<small>{shown ? 'Others can share with you, and you with them.' : 'Hidden: nobody can share with you, and you can’t share.'}</small></span>
+          </label>
           {error && <p className="form-error">{error}</p>}
-          {incoming.length > 0 && (
-            <section className="contacts-group">
-              <h3>Asking to connect</h3>
-              {incoming.map((c) => (
-                <div key={c.slug} className="contact-row">
-                  <span className="share-avatar" aria-hidden="true">{(c.name || c.slug).slice(0, 1).toUpperCase()}</span>
-                  <span className="share-person-name">{c.name || c.slug}<small>{c.slug}</small></span>
-                  <button type="button" className="btn btn-small btn-primary" onClick={() => run(() => api.acceptContact(c.slug), `${c.name || c.slug} is a contact now`)}>Accept</button>
-                  <button type="button" className="btn btn-small" onClick={() => run(() => api.removeContact(c.slug))}>Decline</button>
-                </div>
-              ))}
-            </section>
-          )}
           <section className="contacts-group">
-            <h3>Contacts</h3>
-            {state && !accepted.length && <p className="muted">None yet.</p>}
-            {accepted.map((c) => (
+            <h3>People</h3>
+            {state && !list.length && <p className="muted">{shown ? 'No one else on this server shares yet.' : 'Show yourself to others to see who shares.'}</p>}
+            {list.map((c) => (
               <div key={c.slug} className="contact-row">
-                <span className="share-avatar" aria-hidden="true">{(c.name || c.slug).slice(0, 1).toUpperCase()}</span>
-                <span className="share-person-name">{c.name || c.slug}<small>{c.slug}</small></span>
-                <button type="button" className="btn btn-small btn-danger-text" onClick={() => remove(c)}>Remove</button>
+                <span className={`share-avatar${c.hidden ? ' is-waiting' : ''}`} aria-hidden="true">{(c.name || c.slug).slice(0, 1).toUpperCase()}</span>
+                <span className="share-person-name">{c.name || c.slug}<small>{c.hidden ? 'Their shares are hidden from you' : c.slug}</small></span>
+                <button type="button" className="btn btn-small" onClick={() => run(() => api.hidePerson(c.slug, !c.hidden), c.hidden ? `${c.name}’s shares show again` : `${c.name}’s shares are hidden`)}>
+                  {c.hidden ? 'Show their shares' : 'Hide their shares'}
+                </button>
               </div>
             ))}
           </section>
-          {outgoing.length > 0 && (
-            <section className="contacts-group">
-              <h3>Waiting for them</h3>
-              {outgoing.map((c) => (
-                <div key={c.slug} className="contact-row">
-                  <span className="share-avatar is-waiting" aria-hidden="true"><Icon name="clock" size={13} /></span>
-                  <span className="share-person-name">{c.name || c.slug}<small>Request sent</small></span>
-                  <button type="button" className="btn btn-small" onClick={() => run(() => api.removeContact(c.slug))}>Cancel</button>
-                </div>
-              ))}
-            </section>
-          )}
           {state?.myShares?.length > 0 && (
             <section className="contacts-group">
               <h3>You Share</h3>

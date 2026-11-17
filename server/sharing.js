@@ -13,7 +13,8 @@ import { pushToAll } from './push.js';
 
 /**
  * Sharing between the Selahs of a Selah Ministry server (8.0; through the share hub since 14.1): notes, notebooks and
- * projects (Desk studies) shared live and read-only with contacts, with margin comments going back to the owner.
+ * projects (Desk studies) shared live and read-only with the others on the server (14.1: everyone who shares and
+ * shows themselves; no contact requests), with margin comments going back to the owner.
  *
  * The share hub (server/hub/) keeps it all in one place: contacts, who each share is for, one copy of each shared
  * note and attachment, and the comments. This Selah reaches it over its own private network with its own key
@@ -242,11 +243,9 @@ async function checkShares() {
 
 function onEvent(e) {
   switch (e.type) {
-    case 'contact-request':
-      pushToAll(`${e.name || e.from} wants to share with you`, 'Open Shared with me to answer.', { section: 'shared' });
-      return changed('contacts', { from: e.name || e.from, request: true });
-    case 'contact-accepted':
-      return changed('contacts', { from: e.name || e.from, accepted: true });
+    case 'people':
+      // Someone was shown, hidden, added or removed (14.1: everyone shown is a contact).
+      return changed('contacts');
     case 'contact-removed':
       // Their shares to me ended at the hub; mine to them stop too.
       db.prepare('DELETE FROM share_people WHERE slug = ?').run(String(e.from ?? ''));
@@ -346,10 +345,11 @@ const sid = (v) => { const id = String(v ?? ''); if (!SHARE_ID.test(id)) throw h
 export default async function sharingRoutes(app) {
   app.get('/api/sharing', async () => {
     if (!enabled()) return { enabled: false };
-    const [{ contacts }, { shares }, mine] = await Promise.all([hub('GET', '/v1/contacts'), hub('GET', '/v1/shared'), hub('GET', '/v1/mine')]);
+    const [{ contacts }, { shares }, mine, me] = await Promise.all([hub('GET', '/v1/contacts'), hub('GET', '/v1/shared'), hub('GET', '/v1/mine'), hub('GET', '/v1/me')]);
     const title = db.prepare('SELECT title FROM notes WHERE id = ? AND deleted_at IS NULL');
     return {
-      enabled: true, on: sharingOn(), me: { slug: config.tenant, name: myName() },
+      // 14.1: contacts are everyone on the server who shares and shows themselves (me.listed: whether I do).
+      enabled: true, on: sharingOn(), me: { slug: config.tenant, name: myName(), listed: me.listed },
       contacts, sharedWithMe: shares, myShares: await myShares(contacts),
       // My notes with comments I haven't read, for Home.
       newComments: mine.notes.map((n) => ({ noteId: n.noteKey, title: title.get(n.noteKey)?.title, count: n.count, at: n.at, fromName: n.fromName }))
@@ -357,26 +357,21 @@ export default async function sharingRoutes(app) {
     };
   });
 
-  app.post('/api/sharing/contacts', async (req) => {
+  // "Show me to others" (14.1). Off: nobody can share with me and I can't share, so what I share ends here too.
+  app.put('/api/sharing/me', async (req) => {
     mustBeOn();
-    const slug = String(req.body?.slug ?? '').trim().toLowerCase().replace(/^@/, '').replace(/\..*$/, '');
-    if (!SLUG.test(slug)) throw httpError(400, 'Type their Selah name: the first part of their Selah web address.');
-    if (slug === config.tenant) throw httpError(400, 'That’s you.');
-    return hub('POST', '/v1/contacts', { to: slug });
+    const listed = req.body?.listed !== false;
+    const r = await hub('PUT', '/v1/me', { listed });
+    if (!listed) db.exec('DELETE FROM shares_out');
+    changed('contacts');
+    return r;
   });
 
-  app.post('/api/sharing/contacts/:slug/accept', async (req) => {
-    mustBeOn();
-    return hub('POST', `/v1/contacts/${encodeURIComponent(req.params.slug)}/accept`);
-  });
-
-  // Declines a request, cancels mine, or removes a contact (which ends everything shared between us).
-  app.delete('/api/sharing/contacts/:slug', async (req) => {
+  // Hides someone's shares from me, or shows them again (Shared with me → Hide). They aren't told.
+  app.post('/api/sharing/hide/:slug', async (req) => {
     if (!enabled()) throw httpError(404, 'Not found');
-    const slug = String(req.params.slug);
-    const r = await hub('DELETE', `/v1/contacts/${encodeURIComponent(slug)}`);
-    db.prepare('DELETE FROM share_people WHERE slug = ?').run(slug);
-    for (const s of db.prepare('SELECT id FROM shares_out WHERE NOT EXISTS (SELECT 1 FROM share_people p WHERE p.share_id = shares_out.id)').all()) await stopShare(s.id);
+    const r = await hub('POST', `/v1/hide/${encodeURIComponent(req.params.slug)}`, { hidden: req.body?.hidden !== false });
+    changed('contacts');
     return r;
   });
 
@@ -399,7 +394,7 @@ export default async function sharingRoutes(app) {
     if (refTitle(kind, refId) == null) throw httpError(404, 'Not found');
     const list = [...new Set((Array.isArray(b.people) ? b.people : []).map(String))];
     const { contacts } = await hub('GET', '/v1/contacts');
-    for (const slug of list) if (!contacts.some((c) => c.slug === slug && c.status === 'accepted')) throw httpError(400, `${slug} isn’t one of your contacts.`);
+    for (const slug of list) if (!contacts.some((c) => c.slug === slug && c.status === 'accepted')) throw httpError(400, `${slug} can’t be shared with: sharing is off for them, or they’re hidden from others.`);
     let s = ownerShareOf(kind, refId);
     if (!list.length) {
       if (s) await stopShare(s.id);

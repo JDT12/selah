@@ -39,7 +39,7 @@ const KINDS = {
   'clipper-removed': { label: 'Edge clipper disconnected', icon: 'link' },
   'blocked-origin': { label: 'Blocked a request from another site', icon: 'x', bad: true },
   'rate-limited': { label: 'Slowed down too many requests', icon: 'x', bad: true },
-  'setup-link': { label: 'Setup link made by your Selah host', icon: 'link' },
+  'setup-link': { label: 'Setup link made by your Selah admin', icon: 'link' },
   'setup-failed': { label: 'Setup link that didn’t work', icon: 'x', bad: true },
   'setup-done': { label: 'Set up with the setup link', icon: 'check' },
   'setup-reset': { label: 'Sign-in reset with a reset link', icon: 'key' },
@@ -61,7 +61,7 @@ const KINDS = {
 const detailText = (e) => {
   const d = e.detail ?? {};
   if (d.from === 'server') return 'from the server';
-  if (d.notes != null && d.from) return `${d.notes} note${d.notes === 1 ? '' : 's'} from ${d.from === 'host' ? 'your Selah host’s backup' : d.from === 'offsite' ? 'the off-site backup' : 'a restore point'}`;
+  if (d.notes != null && d.from) return `${d.notes} note${d.notes === 1 ? '' : 's'} from ${d.from === 'host' ? 'your Selah admin’s backup' : d.from === 'offsite' ? 'the off-site backup' : 'a restore point'}`;
   if (d.notes != null && d.slug) return `${d.slug}: ${d.notes} note${d.notes === 1 ? '' : 's'}, ${d.notebooks} notebook${d.notebooks === 1 ? '' : 's'}`;
   if (d.method === 'recovery') return `with a recovery code (${d.left} left)`;
   if (d.device) return d.device;
@@ -70,7 +70,7 @@ const detailText = (e) => {
   if (d.idleDays) return `sign out after ${IDLE_LABELS[d.idleDays]} idle`;
   if (d.origin) return `from ${d.origin}`;
   if (d.slug) return d.kind ? `${d.slug} (${d.kind})` : d.slug;
-  if (d.from === 'admin') return 'by your Selah host';
+  if (d.from === 'admin') return 'by your Selah admin';
   return '';
 };
 

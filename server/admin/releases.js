@@ -153,6 +153,9 @@ async function finishPrepared(tmp, dest, version, channel) {
     setSetting('beta_release', version);
   }
   await pruneReleases();
+  // The share hub runs on the newest release that has it: start it on this one now, before any Selah moves to it
+  // (the monitor would only get to it within a minute).
+  try { await (await import('./hub.js')).checkHub(); } catch { /* the monitor tries again */ }
 }
 
 /**

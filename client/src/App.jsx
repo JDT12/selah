@@ -1056,8 +1056,6 @@ function Workspace({ themeState, cert, signInNotice, onLogout }) {
       if (d.sharing === 'new') { msg = `${d.from} shared “${d.title}” with you`; action = { label: 'Open', onClick: openShared }; }
       else if (d.sharing === 'comment' && d.from) { msg = `${d.from} commented on a note you share`; if (d.note) action = { label: 'Open', onClick: () => openNoteRef.current(d.note) }; }
       else if (d.sharing === 'reply') { msg = `${d.from} replied to your comment`; action = { label: 'Open', onClick: openShared }; }
-      else if (d.sharing === 'contacts' && d.request) msg = `${d.from} wants to share with you: Shelf → Shared with me → Contacts`;
-      else if (d.sharing === 'contacts' && d.accepted) msg = `${d.from} is a contact now`;
       if (!msg) return;
       dialog.toast(msg, 'info', 8000, action);
       if ((isDesktopApp() || document.hidden) && !focusOn()) notify('Selah', msg).catch(() => {});

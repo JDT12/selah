@@ -75,7 +75,7 @@ export function quotaCheck(app) {
     const used = storageUsed();
     if (used.bytes + len > config.quota) {
       return reply.code(413).send({
-        error: `There isn’t room for this: ${mb(used.bytes)} of your ${mb(config.quota)} is used. Delete some attachments (Attachments page) or ask your Selah host for more space.`,
+        error: `There isn’t room for this: ${mb(used.bytes)} of your ${mb(config.quota)} is used. Delete some attachments (Attachments page) or ask your Selah admin for more space.`,
       });
     }
     usageCache.at = 0; // count again after it lands
