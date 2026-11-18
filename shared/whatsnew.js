@@ -5,7 +5,7 @@
 export const WHATS_NEW = [
   {
     version: '14.1.0',
-    date: '',
+    date: '2026-11-17',
     title: 'Selah on your own server, made simple',
     items: [
       'Selah Cloud, one Selah for you or your family on your own server, now installs with one command and finishes setting up in your browser.',

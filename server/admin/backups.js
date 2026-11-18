@@ -417,6 +417,43 @@ async function backupAdmin(tmpRoot) {
   if (errors.length) throw new Error(errors.join('; '));
 }
 
+/**
+ * The share hub's records (14.1, <cloud root>/hub): a consistent copy of hub.db (kept like the console's, by date)
+ * and its attachments folder, kept in step. Its keys and control token are in the console's database, which is
+ * backed up too. Restoring: stop the hub (docker rm -f <prefix>-hub), put hub.db and files/ back in <cloud root>/hub,
+ * and the console starts it again within a minute.
+ */
+async function backupHub(tmpRoot) {
+  const dir = path.join(paths.root, 'hub');
+  const dbFile = path.join(dir, 'hub.db');
+  if (!fs.existsSync(dbFile)) return;
+  const tmp = fs.mkdtempSync(path.join(tmpRoot, 'hub-'));
+  const errors = [];
+  try {
+    const raw = path.join(tmp, 'hub.db');
+    const src = new DatabaseSync(dbFile, { readOnly: true });
+    try { await backup(src, raw); } finally { src.close(); }
+    const name = `hub-${stamp()}.db.gz`;
+    await gzipTo(raw, path.join(tmp, name));
+    const files = path.join(dir, 'files');
+    for (const d of destinations()) {
+      const rclone = rcloneFor(d);
+      try {
+        await rclone(['copyto', path.join(tmp, name), `hostbackup:hub/db/${name}`]);
+        if (fs.existsSync(files)) await rclone(['sync', files, 'hostbackup:hub/files']);
+        const snaps = (await rclone(['lsf', '--files-only', 'hostbackup:hub/db'])).split('\n').filter((n) => /^hub-\d{8}T\d{6}Z\.db\.gz$/.test(n)).sort();
+        const cutoff = stamp(new Date(Date.now() - KEEP_DAYS * 86_400_000));
+        for (const n of snaps.slice(0, Math.max(0, snaps.length - KEEP_MIN)).filter((x) => x.slice(4, 20) < cutoff)) await rclone(['deletefile', `hostbackup:hub/db/${n}`]);
+      } catch (e) {
+        errors.push(destinations().length > 1 ? `${d.account}: ${e.message}` : e.message);
+      }
+    }
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+  if (errors.length) throw new Error(`share hub: ${errors.join('; ')}`);
+}
+
 /** Backs up every tenant (or those in `slugs`) and the console itself. Runs in the background; returns the job id. */
 export function runHostBackups({ trigger = 'manual', slugs = null, forceVerify = false } = {}) {
   if (!configured()) throw httpError(409, 'The host backup isn’t set up yet (Backups → Set up).');
@@ -436,6 +473,8 @@ export function runHostBackups({ trigger = 'manual', slugs = null, forceVerify =
       if (!slugs) {
         job.phase(running.phase = 'Backing up the admin console');
         await backupAdmin(tmpRoot).catch((e) => { adminError = e.message; });
+        job.phase(running.phase = 'Backing up the share hub');
+        await backupHub(tmpRoot).catch((e) => { adminError = adminError ? `${adminError}; ${e.message}` : e.message; });
         for (const d of destinations()) {
           await rcloneFor(d)(['rcat', 'hostbackup:manifest.json'], { input: JSON.stringify({ app: 'Selah', kind: 'host', version: VERSION, createdAt: new Date().toISOString(), tenants: results.map((r) => r.slug) }, null, 2) }).catch(() => {});
         }

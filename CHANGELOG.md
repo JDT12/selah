@@ -4,6 +4,8 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.1.0] - 2026-11-17
+
 Selah 14.1: Selah Cloud and Selah Ministry install from a published image, and the share hub.
 
 ### Added
@@ -52,6 +54,9 @@ Selah 14.1: Selah Cloud and Selah Ministry install from a published image, and t
   notifications stop, without telling them. A `people` event refreshes everyone's list when someone is shown,
   hidden, added or removed. The Contacts dialog becomes **People** (`ContactsDialog` in `SharingDialogs.jsx`), and
   the Shelf's link says People. The 8.0 contacts table is kept as a record only.
+- **The host backup includes the share hub** (`backupHub` in `server/admin/backups.js`): each night a consistent copy
+  of `hub.db` goes to `hub/db/` on every destination (kept like the console's database) and the attachments folder is
+  synced to `hub/files/`. The hub's keys and control token are in the console's database, which is backed up too.
 - **The console runs the hub** (`server/admin/hub.js`): a container (`<prefix>-hub`, records in `<cloud root>/hub`)
   on the newest release that has it, or a service with the process runner; every minute it checks the hub, tells it
   each Selah's name, key, whether it's running and whether it may share, and once moves the 8.0 relay's contacts in.

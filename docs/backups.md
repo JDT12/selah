@@ -28,6 +28,9 @@
   ```
 
   Its current data is moved aside, not deleted.
+- **The share hub** (what people share with each other) is in the same nightly backup: its database, kept like the
+  console's, and its attachments. To restore it, stop the hub (`docker rm -f selah-tenant-hub`), put `hub.db` and
+  `files/` back in `notes-data/cloud/hub`, and the console starts it again within a minute.
 
 ## Selah Desktop
 

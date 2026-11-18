@@ -29,7 +29,7 @@ envval() { sed -n "s/^$1=//p" "$DIR/.env" 2>/dev/null | tail -1; }
 [[ "$(uname -s)" == Linux ]] || fail "Selah Cloud installs on Linux (Ubuntu 24.04 or newer)."
 . /etc/os-release 2>/dev/null || true
 [[ "${ID:-}" == ubuntu ]] || say "This was written for Ubuntu (${PRETTY_NAME:-unknown} found); carrying on, but other systems aren't tested."
-sudo -v || fail "This user needs sudo."
+sudo -n true 2>/dev/null || sudo -v || fail "This user needs sudo."
 
 step "Selah Cloud"
 if [[ -f "$DIR/.env" ]]; then
@@ -46,7 +46,7 @@ else
   say "     on ports 80 and 443."
   say "  2  Your own network only (a home server, no internet access to it): a private certificate, which you trust"
   say "     once on each device."
-  ask "Choose 1 or 2" "1"
+  ask "Choose 1 or 2" "${SELAH_TLS_CHOICE:-1}"
   case "$REPLY" in
     1) ask "Email for Let's Encrypt (expiry warnings only)" "${SELAH_EMAIL:-}"; TLS="$REPLY"
        [[ "$TLS" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || fail "That isn't an email address." ;;
@@ -103,7 +103,7 @@ mkdir -p "$DIR"
 box="selah-files-$$"
 D create --name "$box" "$IMAGE:$VERSION" >/dev/null
 trap 'sudo docker rm -f "$box" >/dev/null 2>&1 || true' EXIT
-for f in compose.yaml Caddyfile updater.sh selah; do D cp "$box:/app/docker/cloud/$f" "$DIR/$f.new"; done
+for f in compose.yaml Caddyfile updater.sh selah; do D cp -q "$box:/app/docker/cloud/$f" "$DIR/$f.new"; done
 D rm -f "$box" >/dev/null
 for f in compose.yaml Caddyfile updater.sh selah; do sudo chown "$USER:" "$DIR/$f.new"; mv "$DIR/$f.new" "$DIR/$f"; done
 chmod +x "$DIR/selah" "$DIR/updater.sh"
@@ -136,11 +136,11 @@ done
 say "ok"
 
 step "Done"
-if D compose exec -T selah node -e "import('./server/auth.js').then((a) => process.exit(a.passwordIsSet() ? 0 : 1))" 2>/dev/null; then
+if D compose exec -T selah node -e "import('./server/auth.js').then((a) => process.exit(a.passwordIsSet() ? 0 : 1))" </dev/null 2>/dev/null; then
   say "Selah is at https://$DOMAIN (already set up)."
 else
   say "Open this link to choose your username and password. It works once:"
-  D compose exec -T selah node scripts/setup-link.mjs | sed -n '2p'
+  D compose exec -T selah node scripts/setup-link.mjs </dev/null | sed -n '2p'
 fi
 if [[ "$TLS" == internal ]]; then
   say ""

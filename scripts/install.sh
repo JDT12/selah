@@ -31,7 +31,7 @@ ask() { # ask "Question" default -> REPLY
 [[ "$(uname -s)" == Linux ]] || fail "Selah Cloud installs on Linux (Ubuntu 24.04 or newer)."
 . /etc/os-release 2>/dev/null || true
 if [[ "${ID:-}" != ubuntu ]]; then say "This was written for Ubuntu ($PRETTY_NAME found); carrying on, but other systems aren't tested."; fi
-sudo -v || fail "This user needs sudo."
+sudo -n true 2>/dev/null || sudo -v || fail "This user needs sudo."
 
 step "Which Selah?"
 say "  1  Selah Cloud: one Selah for you (or your family) at one address, e.g. selah.example.org."
