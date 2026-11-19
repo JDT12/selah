@@ -3814,12 +3814,22 @@ body.focus-writing .sidebar, body.focus-writing .note-list, body.focus-writing .
 .ab-dl-n { flex: none; min-width: 20px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
 .ab-dl-chip { flex: none; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--el, var(--muted)); min-width: 92px; }
 .ab-dl-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ab-dl-item { margin-left: calc(var(--lvl, 0) * 28px); align-items: center; }
+.ab-dl-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ab-dl-mark { flex: none; min-width: 22px; font-weight: 700; color: var(--el, var(--text)); font-variant-numeric: tabular-nums; }
+.ab-dl-lvl { flex: none; display: inline-flex; gap: 2px; margin-left: auto; }
+.ab-dl-lvl .icon-btn { width: 26px; height: 26px; }
+.ab-dl-lvl .icon-btn:disabled { opacity: 0.3; cursor: default; }
+.ab-dl-lvl { opacity: 0; transition: opacity 0.12s; }
+.ab-dl-item:is(:hover, :focus-within, :focus-visible) .ab-dl-lvl { opacity: 1; }
+@media (hover: none) { .ab-dl-lvl { opacity: 1; } }
 .ab-dl-note { margin: 2px 12px 4px; font-size: 12.5px; }
 .ab-dl-intro { margin: 0; font-size: 12.5px; }
 .ab-delivery .ab-section-head .link-btn { font-size: 12.5px; }
 @media (max-width: 600px) {
   .ab-dl-item { flex-wrap: wrap; row-gap: 0; }
   .ab-dl-chip { min-width: 0; }
+  .ab-dl-item { margin-left: calc(var(--lvl, 0) * 16px); }
   .ab-dl-text { flex-basis: 100%; white-space: normal; }
 }
 @media (prefers-color-scheme: dark) {
@@ -6539,3 +6549,13 @@ body.has-full-drawing .ar-tabbar { display: none !important; }
 .phone-connect .qr-box { width: 184px; height: 184px; }
 .phone-connect-steps { margin: 0; padding-left: 20px; line-height: 1.6; }
 @media (max-width: 560px) { .phone-connect { flex-direction: column; } }
+/* 14.1.1: a point's own sub-points under it in Delivery Order. */
+.ab-dl-item.ab-dl-sub { padding-top: 3px; padding-bottom: 3px; font-size: 13px; border-left-style: dotted; background: none; }
+/* 14.1.1: the outline numbering (1. A. I. 1. a. i.) in the other places a note's lists show (teaching, sources). */
+:is(.present-body, .sources-note-body, .ab-html) ol { list-style-type: decimal; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol { list-style-type: upper-alpha; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol ol { list-style-type: upper-roman; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol ol ol { list-style-type: decimal; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol { list-style-type: lower-alpha; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol ol { list-style-type: lower-roman; }
+:is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol ol ol { list-style-type: paren-decimal; }

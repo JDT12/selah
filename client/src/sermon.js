@@ -36,7 +36,7 @@ const outer = (nodes) => nodes.map((n) => (n.nodeType === 1 ? n.outerHTML : n.no
  * edited in the note, so nothing in it is lost.
  */
 const BOX_TAGS = new Set(['P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'STRIKE', 'CODE', 'A', 'UL', 'OL', 'LI', 'BLOCKQUOTE']);
-const BOX_ATTRS = { A: ['href', 'target', 'rel'], OL: ['start'], P: ['data-order'], LI: ['data-order'] };
+const BOX_ATTRS = { A: ['href', 'target', 'rel'], OL: ['start'], P: ['data-order', 'data-level'], LI: ['data-order', 'data-level'] };
 const boxCanHold = (html) => [...doc(html).querySelectorAll('*')].every((el) => BOX_TAGS.has(el.tagName)
   && [...el.attributes].every((a) => (BOX_ATTRS[el.tagName] ?? []).includes(a.name))
   // Logos links (https://ref.ly/…, 10.0.1) are ordinary links; a note link (#note/…) or a bare logosres: address isn't.
@@ -82,18 +82,96 @@ export const fieldOut = (f) => (!f ? '' : f.edited ? carryOrder(f.base ?? '', f.
  * when the count is the same, else by matching text.
  */
 function carryOrder(oldHtml, html) {
-  if (!/data-order=/.test(oldHtml)) return html;
+  if (!/data-(order|level)=/.test(oldHtml)) return html;
   const old = [...doc(oldHtml).children];
   const body = doc(html);
   const now = [...body.children];
-  const byText = new Map(old.filter((e) => e.dataset.order).map((e) => [norm(lineText(e)), e.dataset.order]));
-  now.forEach((el, i) => {
-    const v = old.length === now.length ? old[i].dataset.order : byText.get(norm(lineText(el)));
-    if (v) el.setAttribute('data-order', v);
-  });
+  // Its outline level (data-level, 14.1.1) goes with it.
+  for (const [attr, key] of [['data-order', 'order'], ['data-level', 'level']]) {
+    const byText = new Map(old.filter((e) => e.dataset[key]).map((e) => [norm(lineText(e)), e.dataset[key]]));
+    now.forEach((el, i) => {
+      const v = old.length === now.length ? old[i].dataset[key] : byText.get(norm(lineText(el)));
+      if (v && !el.hasAttribute(attr)) el.setAttribute(attr, v);
+    });
+  }
   return body.innerHTML;
 }
-const filled = (f) => !!f && (f.rich ? !!doc(f.html).textContent.trim() || /<img\b/i.test(f.html) : !!f.text.trim());
+// ---------- an element as outline points (14.1.1) ----------
+
+const DELIVERY = ['data-order', 'data-level'];
+const deliveryAttrs = (el) => Object.fromEntries(DELIVERY.filter((a) => el.hasAttribute(a)).map((a) => [a, el.getAttribute(a)]));
+const lineHtml = (nodes) => nodes.map((n) => (n.nodeType === 1 ? n.outerHTML : n.nodeType === 3 ? esc(n.textContent) : '')).join('').trim();
+/** A paragraph's own lines (split at its line breaks), each as inline HTML. */
+function paraLines(p) {
+  const lines = [[]];
+  for (const n of [...p.childNodes]) {
+    if (n.nodeType === 1 && n.tagName === 'BR') lines.push([]);
+    else lines[lines.length - 1].push(n);
+  }
+  return lines.map(lineHtml).filter((h) => doc(h).textContent.trim());
+}
+
+/**
+ * An element (Explanation, Illustration…) as outline lines for the builder's line-by-line editor: [{ id, level, text,
+ * attrs }], with each line's inline HTML by its text (so bold and links typed in the note stay while the words do).
+ * Lists keep their levels; a paragraph is a main point (its further lines points under it). `attrs` carries a main
+ * point's delivery number and level from the Arrange board. Null when the element holds something an outline can't
+ * (a quote, say), so it stays a rich box.
+ */
+export function pointsOf(html) {
+  const lines = [];
+  const inline = new Map();
+  const add = (level, h, attrs = {}) => {
+    const text = doc(h).textContent.replace(/\s+/g, ' ').trim();
+    if (!text) return;
+    lines.push({ id: uid(), level, text, attrs });
+    inline.set(norm(text), h);
+  };
+  const walk = (list, level) => {
+    for (const li of [...list.children].filter((x) => x.tagName === 'LI')) {
+      const own = [...li.childNodes].filter((n) => !(n.nodeType === 1 && (n.tagName === 'OL' || n.tagName === 'UL')));
+      const ps = own.filter((n) => n.nodeType === 1 && n.tagName === 'P');
+      const [first, ...more] = ps.length === own.filter((n) => n.nodeType === 1 || n.textContent.trim()).length && ps.length ? ps.flatMap(paraLines) : [lineHtml(own)];
+      add(level, first ?? '', deliveryAttrs(li));
+      for (const m of more) add(level + 1, m);
+      for (const sub of [...li.children].filter((x) => x.tagName === 'OL' || x.tagName === 'UL')) walk(sub, level + 1);
+    }
+  };
+  for (const n of [...doc(html).childNodes]) {
+    if (n.nodeType === 3) { if (n.textContent.trim()) add(0, esc(n.textContent.trim())); continue; }
+    if (n.nodeType !== 1) continue;
+    if (n.tagName === 'OL' || n.tagName === 'UL') walk(n, 0);
+    else if (n.tagName === 'P') {
+      const [first, ...more] = paraLines(n);
+      if (first) add(0, first, deliveryAttrs(n));
+      for (const m of more) add(1, m);
+    } else return null;
+  }
+  return { lines: lines.length ? lines : [{ id: uid(), level: 0, text: '', attrs: {} }], inline };
+}
+
+/** Outline lines back to the element's HTML: a nested numbered list, main points keeping their delivery numbers. */
+export function pointsHtml(lines, inline) {
+  let prev = -1;
+  const kept = lines.filter((l) => l.text.trim()).map((l) => { const level = Math.max(0, Math.min(l.level, prev + 1)); prev = level; return { ...l, level }; });
+  let i = 0;
+  const build = (level) => {
+    let h = '<ol>';
+    while (i < kept.length && kept[i].level === level) {
+      const l = kept[i++];
+      const attrs = level === 0 ? Object.entries(l.attrs ?? {}).map(([k, v]) => ` ${k}="${esc(v).replace(/"/g, '&quot;')}"`).join('') : '';
+      h += `<li${attrs}><p>${inline?.get(norm(l.text)) ?? esc(l.text.trim())}</p>`;
+      if (i < kept.length && kept[i].level > level) h += build(level + 1);
+      h += '</li>';
+    }
+    return `${h}</ol>`;
+  };
+  let h = '';
+  while (i < kept.length) h += build(kept[i].level);
+  return h;
+}
+
+const filled = (f) =>!!f && (f.rich ? !!doc(f.html).textContent.trim() || /<img\b/i.test(f.html) : !!f.text.trim());
 
 /** Splits nodes at headings of `tag`: { lead, parts: [{ title, titleHtml, nodes }] }. */
 function cut(nodes, tag) {

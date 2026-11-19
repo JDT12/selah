@@ -7,7 +7,7 @@ import { useDialog } from './Dialogs.jsx';
 import MarkComplete, { useComplete } from './MarkComplete.jsx';
 import {
   CONCLUSION_PARTS, DIVISION_PARTS, INTRO_PARTS, getPart, joinStatement, newDivision, parseSermon,
-  boxHtml, reiterationText, sermonHtml, setPart, words,
+  boxHtml, pointsHtml, pointsOf, reiterationText, sermonHtml, setPart, words,
 } from '../sermon.js';
 import { preachNote } from './PreachMode.jsx';
 import { presentNote } from './PresentMode.jsx';
@@ -16,6 +16,7 @@ import SlidesEditor from './SlidesEditor.jsx';
 import SermonBoard from './SermonBoard.jsx';
 import FromStudies from './FromStudies.jsx';
 import RichBox from './RichBox.jsx';
+import OutlineEditor from './OutlineEditor.jsx';
 import { builderKeyAnswers, openBuilderPage, useAutosave } from '../builderPages.js';
 import { afterMove, fitTransition, isStale, moveDivision } from '../sermonBoard.js';
 
@@ -48,7 +49,7 @@ const GUIDE = {
   textIdea: 'Name what the text is talking about (the subject) and what it says about it (the modifier or complement). Together, in the past tense, they make the text idea: what it meant to its first hearers.',
   bridge: 'Restate the text idea in the present tense for your hearers: the sermon idea. Then ask it a question (why, how, what) that the divisions will answer, and answer it with a transition that names a key word (“for three reasons”).',
   divisions: 'Each division answers the interrogative with one statement drawn from the text, in parallel wording, with the verses it comes from. Write a transition that carries the listener from each division to the next.',
-  persuasion: 'Every division needs four things in balance: explanation (what the text says), illustration (what it looks like), argumentation (why it’s true, answering objections) and application (what to do about it). The bars show how much each has.',
+  persuasion: 'Every division needs four things in balance: explanation (what the text says), illustration (what it looks like), argumentation (why it’s true, answering objections) and application (what to do about it). The bars show how much each has. Each line is a main point you can number on the Arrange board; indent lines (Tab) to give it sub-points.',
   analogies: 'Look for something in everyday life that works the way this truth works: traffic, farming, money, family, sports, weather. A natural analogy lets the listener see the point before you state it.',
   stories: 'Open with a picture or a story that wins attention and leads to the sermon’s need. Close with a picture of the truth lived out (visualization), so the listener sees themselves in it.',
   experience: 'Connect the text with what your hearers actually live through: their fears, habits, work, relationships. Name the need in the introduction, and make each division’s application specific.',
@@ -88,6 +89,31 @@ function Part({ label, hint, f, onChange, placeholder, rows }) {
           <p className="muted"><Icon name="note" size={13} /> This part has lists or pictures, so edit it in the note.</p>
         </div>
       ) : <RichBox html={boxHtml(f)} onChange={onChange} placeholder={placeholder} rows={rows} label={label} />}
+    </div>
+  );
+}
+
+/**
+ * A division's element (Explanation, Illustration…) typed as outline points (14.1.1), line by line: Tab puts a line
+ * under the one above, so each main point carries its own sub-points (A, B, I…) wherever the Arrange board puts it.
+ * An element holding something an outline can't (a quote, a picture) stays a rich box.
+ */
+function PointsPart({ label, hint, f, onChange, placeholder }) {
+  const html = boxHtml(f);
+  const [state, setState] = useState(() => ({ html, pts: f.rich ? null : pointsOf(html) }));
+  // Re-read when the element changed elsewhere (the Arrange board numbered it, a photo's words were added).
+  const pts = state.html === html ? state.pts : (() => { const p = f.rich ? null : pointsOf(html); setState({ html, pts: p }); return p; })();
+  if (!pts) return <Part label={label} hint={hint} f={f} onChange={onChange} placeholder={placeholder} />;
+  const set = (lines) => {
+    const out = pointsHtml(lines, pts.inline);
+    setState({ html: out, pts: { ...pts, lines } });
+    onChange({ html: out });
+  };
+  return (
+    <div className="sb-part">
+      <div className="sb-part-head"><strong>{label}</strong>{f.text.trim() && <span className="muted">{words(f.text)} words</span>}</div>
+      {hint && <p className="sb-hint">{hint}</p>}
+      <OutlineEditor lines={pts.lines} onChange={set} placeholder={placeholder} />
     </div>
   );
 }
@@ -437,16 +463,16 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
           <p className="sb-legend">{DIVISION_PARTS.map(([k, l]) => <span key={k}><i className={`sb-bal-${k}`} /> {l}</span>)}</p>
         </div>
         {writtenInNote}
-        <Part label="Explanation" hint="What the text says and means." f={getPart(d, 'explanation')} onChange={(t) => setDivPart(div, 'explanation', t)} />
-        <Part label="Illustration" hint="What it looks like (more in step 8)." f={getPart(d, 'illustration')} onChange={(t) => setDivPart(div, 'illustration', t)} rows={2} />
-        <Part label="Argumentation" hint="Why it’s true: reasons, other Scripture, answers to objections." f={getPart(d, 'argumentation')} onChange={(t) => setDivPart(div, 'argumentation', t)} />
-        <Part label="Application" hint="What to do about it (more in step 10)." f={getPart(d, 'application')} onChange={(t) => setDivPart(div, 'application', t)} rows={2} />
+        <PointsPart key={`${d.uid}:e`} label="Explanation" hint="What the text says and means." f={getPart(d, 'explanation')} onChange={(t) => setDivPart(div, 'explanation', t)} />
+        <PointsPart key={`${d.uid}:i`} label="Illustration" hint="What it looks like (more in step 8)." f={getPart(d, 'illustration')} onChange={(t) => setDivPart(div, 'illustration', t)} />
+        <PointsPart key={`${d.uid}:r`} label="Argumentation" hint="Why it’s true: reasons, other Scripture, answers to objections." f={getPart(d, 'argumentation')} onChange={(t) => setDivPart(div, 'argumentation', t)} />
+        <PointsPart key={`${d.uid}:a`} label="Application" hint="What to do about it (more in step 10)." f={getPart(d, 'application')} onChange={(t) => setDivPart(div, 'application', t)} />
       </>
     ),
     analogies: !divs.length ? noDivisions : divs.map((x, i) => (
       <div key={i} className="sb-card">
         <p className="sb-card-title"><span className="sb-div-n">{i + 1}</span> {joinStatement(x.statement, x.verses) || 'Untitled Division'}</p>
-        <Part label="Illustration" f={getPart(x, 'illustration')} onChange={(t) => setDivPart(i, 'illustration', t)} placeholder="Like scales for grain at the market: the measure you use…" />
+        <PointsPart label="Illustration" f={getPart(x, 'illustration')} onChange={(t) => setDivPart(i, 'illustration', t)} placeholder="Like scales for grain at the market: the measure you use…" />
       </div>
     )),
     stories: (
@@ -461,7 +487,7 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
         {divs.map((x, i) => (
           <div key={i} className="sb-card">
             <p className="sb-card-title"><span className="sb-div-n">{i + 1}</span> {joinStatement(x.statement, x.verses) || 'Untitled Division'}</p>
-            <Part label="Application" f={getPart(x, 'application')} onChange={(t) => setDivPart(i, 'application', t)} placeholder="This week, before you correct someone, …" />
+            <PointsPart label="Application" f={getPart(x, 'application')} onChange={(t) => setDivPart(i, 'application', t)} placeholder="This week, before you correct someone, …" />
           </div>
         ))}
       </>

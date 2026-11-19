@@ -5,8 +5,9 @@ import { BANK_KINDS, BankItemDialog } from './SermonDialogs.jsx';
 import { CONCLUSION_PARTS, DIVISION_PARTS, INTRO_PARTS, joinStatement, words } from '../sermon.js';
 import {
   boardOf, deliveryUnits, diffLines, fitTransition, htmlBlocks, indentBlock, insertBlocks, moveBlock, moveDivision, movePart,
-  numberDivision, numberable, outlineLines, removeBlock, removeDivision, removePart, setBlockOrder, subtree,
+  numberDivision, numberable, outlineLines, removeBlock, removeDivision, removePart, setBlockLevel, setBlockOrder, subtree,
 } from '../sermonBoard.js';
+import { outlineMarker } from '../../../shared/outline.js';
 
 /**
  * The builder's Arrange board: the whole sermon as cards to drag (divisions, their parts, and each paragraph or list
@@ -359,6 +360,15 @@ export default function SermonBoard({ model, move, undo, canUndo, savedModel, se
   const deliveryCard = (s) => {
     const units = deliveryUnits(s.division).filter((u) => u.blocks.some((b) => b.text || /<img\b/i.test(b.html)));
     const numbered = units.some((u) => u.order);
+    // Each point's outline marker (1. A. I. …), as preaching mode and Word will number it.
+    const counts = [];
+    const mark = (lvl) => {
+      counts.length = lvl + 1;
+      counts[lvl] = (counts[lvl] ?? 0) + 1;
+      return outlineMarker(lvl, counts[lvl]);
+    };
+    // Each point's marker, then its own sub-points' (A, B, I… under it), in the order they'll be preached.
+    const markers = units.map((u) => ({ head: mark(u.level), subs: u.blocks.slice(1).map((b) => ({ b, lvl: u.level + b.depth - u.blocks[0].depth, m: mark(u.level + b.depth - u.blocks[0].depth) })) }));
     return (
       <section key={s.id} className="ab-section ab-division ab-delivery">
         <header className="ab-section-head">
@@ -369,16 +379,32 @@ export default function SermonBoard({ model, move, undo, canUndo, savedModel, se
         </header>
         {units.length ? (
           <ol className="ab-dl">
-            {units.map((u) => {
+            {units.map((u, k) => {
               const first = u.blocks[0];
-              const subs = u.blocks.length - 1;
-              return (
-                <li key={u.seq} className={`ab-dl-item ${elClass(u.key)} ${u.order ? '' : 'is-unnumbered'}`}>
-                  <span className="ab-dl-n" title={u.order ? undefined : 'Not numbered: comes after the numbered blocks'}>{u.order ?? '–'}</span>
+              const at = { sec: s.id, part: u.part, index: u.index };
+              const max = k === 0 ? 0 : units[k - 1].level + 1;
+              const setLevel = (lvl) => move((m) => setBlockLevel(m, at, Math.max(0, Math.min(max, lvl))));
+              return [
+                <li key={u.seq} className={`ab-dl-item ${elClass(u.key)} ${u.order ? '' : 'is-unnumbered'}`} style={{ '--lvl': u.level }}
+                  tabIndex={0} aria-level={u.level + 1}
+                  onKeyDown={(e) => { if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey && (e.shiftKey ? u.level > 0 : u.level < max)) { e.preventDefault(); setLevel(u.level + (e.shiftKey ? -1 : 1)); } }}>
+                  <span className="ab-dl-n" title={u.order ? 'Delivery number' : 'Not numbered: comes after the numbered blocks'}>{u.order ?? '–'}</span>
+                  <span className="ab-dl-mark" aria-hidden="true">{markers[k].head}</span>
                   <span className="ab-dl-chip">{u.key === 'lead' ? 'Under the heading' : u.title}</span>
-                  <span className="ab-dl-text">{first.text || <em className="muted">(picture)</em>}{subs > 0 && <span className="muted"> · {subs} sub-point{subs === 1 ? '' : 's'}</span>}</span>
-                </li>
-              );
+                  <span className="ab-dl-text">{first.text || <em className="muted">(picture)</em>}</span>
+                  <span className="ab-dl-lvl">
+                    <button type="button" className="icon-btn" disabled={u.level === 0} onClick={() => setLevel(u.level - 1)} aria-label="Outdent" title="Outdent (Shift+Tab)"><Icon name="outdent" size={14} /></button>
+                    <button type="button" className="icon-btn" disabled={u.level >= max} onClick={() => setLevel(u.level + 1)} aria-label="Indent" title={k === 0 ? 'The first point is a main point' : 'Indent under the point above (Tab)'}><Icon name="indent" size={14} /></button>
+                  </span>
+                </li>,
+                ...markers[k].subs.map(({ b, lvl, m }, j) => (
+                  <li key={`${u.seq}.${j}`} className={`ab-dl-item ab-dl-sub ${elClass(u.key)} ${u.order ? '' : 'is-unnumbered'}`} style={{ '--lvl': lvl }}>
+                    <span className="ab-dl-n" aria-hidden="true" />
+                    <span className="ab-dl-mark" aria-hidden="true">{m}</span>
+                    <span className="ab-dl-text">{b.text || <em className="muted">(picture)</em>}</span>
+                  </li>
+                )),
+              ];
             })}
           </ol>
         ) : <p className="ab-empty muted">Nothing under this division yet.</p>}
@@ -425,7 +451,7 @@ export default function SermonBoard({ model, move, undo, canUndo, savedModel, se
           </div>
         ) : dense === 'delivery' ? (
           <div className="ab-sections">
-            <p className="ab-dl-intro muted">The Introduction and Conclusion are preached as written. Blocks without a number come after the numbered ones.</p>
+            <p className="ab-dl-intro muted">Sub-points come from each element (type them in Steps, Tab to indent). To put a whole point under the point above it, from any element, use Indent or Tab here. The Introduction and Conclusion are preached as written; blocks without a number come after the numbered ones.</p>
             {board.filter((s) => s.kind === 'division').map(deliveryCard)}
           </div>
         ) : (

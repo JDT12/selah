@@ -1,10 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import Icon from './Icon.jsx';
 import { uid } from '../sermon.js';
+import { outlineMarker } from '../../../shared/outline.js';
 
-const ROMAN = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x', 'xi', 'xii', 'xiii', 'xiv', 'xv'];
-const alpha = (n) => String.fromCharCode(96 + ((n - 1) % 26) + 1);
-/** 1. / A. / I. / a. / i. / (1) by level, the way the note numbers it; a section heading starts again at 1. */
+/** The outline numbering (shared/outline.js: 1. A. I. 1. a. i. …) by level, as the note, preaching mode and Word
+ * number it; a section heading starts again at 1. */
 function labels(lines) {
   const counts = [];
   return lines.map((l) => {
@@ -14,8 +14,7 @@ function labels(lines) {
     }
     counts.length = l.level + 1;
     counts[l.level] = (counts[l.level] ?? 0) + 1;
-    const n = counts[l.level];
-    return [`${n}.`, `${alpha(n).toUpperCase()}.`, `${(ROMAN[n - 1] ?? String(n)).toUpperCase()}.`, `${alpha(n)}.`, `${ROMAN[n - 1] ?? n}.`, `(${n})`][l.level % 6];
+    return outlineMarker(l.level, counts[l.level]);
   });
 }
 /** A line and the lines under it. */

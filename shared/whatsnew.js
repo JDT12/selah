@@ -4,6 +4,17 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.1.1',
+    date: '2026-11-19',
+    title: 'Sermon outlines that keep their sub-points',
+    items: [
+      'In the sermon builder, Explanation, Illustration, Argumentation and Application are typed line by line, like the lesson builder: each line is a main point, and Tab puts a line under it as a sub-point.',
+      'On the Arrange board you number only the main points. Their sub-points go with them, so an illustration you preach fifth shows as 5. with A., B. and I. under it in Delivery Order, preaching mode and Word.',
+      'To make a whole point support the one before it, from any element, select it in Delivery Order and press Tab (or use Indent).',
+      'Outlines number the same way everywhere: 1. A. I. 1. a. i.',
+    ],
+  },
+  {
     version: '14.1.0',
     date: '2026-11-17',
     title: 'Selah on your own server, made simple',

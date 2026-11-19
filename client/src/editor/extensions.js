@@ -299,6 +299,13 @@ const DeliveryOrder = Extension.create({
           parseHTML: (el) => el.getAttribute('data-order'),
           renderHTML: (attrs) => (attrs.order ? { 'data-order': attrs.order } : {}),
         },
+        // How far in it sits in the delivery outline (14.1.1).
+        level: {
+          default: null,
+          keepOnSplit: false,
+          parseHTML: (el) => el.getAttribute('data-level'),
+          renderHTML: (attrs) => (attrs.level ? { 'data-level': attrs.level } : {}),
+        },
       },
     }];
   },

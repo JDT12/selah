@@ -24,7 +24,8 @@ const attrs = (el) => [...el.attributes].map((a) => ` ${a.name}="${esc(a.value).
 /**
  * A part's HTML as blocks: { kind: 'p' | 'li', html, text, depth, tag, liAttrs, order }. Lists are flattened, so each
  * list item (at any depth) is a block of its own; anything else at the top (a paragraph, a picture, a table, a task
- * list) is one block. `order` is the block's place in delivery order (its data-order), or null.
+ * list) is one block. `order` is the block's place in delivery order (its data-order), or null; `level` is how far
+ * in it sits in the delivery outline (its data-level, 14.1.1), 0 for a main point.
  */
 export function blocksOf(html) {
   const out = [];
@@ -33,7 +34,7 @@ export function blocksOf(html) {
       if (li.tagName !== 'LI') continue;
       const own = [...li.childNodes].filter((n) => !isList(n));
       const html = own.map((n) => (n.nodeType === 1 ? n.outerHTML : n.nodeType === 3 ? esc(n.textContent) : '')).join('').trim();
-      out.push({ kind: 'li', tag: list.tagName.toLowerCase(), depth, html: html || '<p></p>', text: textOf(own), liAttrs: attrs(li), order: li.getAttribute('data-order') });
+      out.push({ kind: 'li', tag: list.tagName.toLowerCase(), depth, html: html || '<p></p>', text: textOf(own), liAttrs: attrs(li), order: li.getAttribute('data-order'), level: Number(li.getAttribute('data-level')) || 0 });
       for (const n of li.children) if (isList(n)) walk(n, depth + 1);
     }
   };
@@ -41,7 +42,7 @@ export function blocksOf(html) {
     if (n.nodeType === 3) {
       if (n.textContent.trim()) out.push({ kind: 'p', depth: 0, html: `<p>${esc(n.textContent.trim())}</p>`, text: n.textContent.trim(), order: null });
     } else if (isList(n)) walk(n, 0);
-    else if (n.nodeType === 1) out.push({ kind: 'p', depth: 0, html: n.outerHTML, text: textOf([n]), order: n.getAttribute('data-order') });
+    else if (n.nodeType === 1) out.push({ kind: 'p', depth: 0, html: n.outerHTML, text: textOf([n]), order: n.getAttribute('data-order'), level: Number(n.getAttribute('data-level')) || 0 });
   }
   return out;
 }
@@ -275,17 +276,34 @@ export function afterMove(before, after) {
 
 // ---------- delivery order ----------
 
-/** A block with its delivery number set (a string) or cleared (null). */
-function withOrder(b, v) {
+/** A block with one of its delivery attributes (data-order, data-level) set (a string) or cleared (null). */
+function withAttr(b, name, v, patch) {
   if (b.kind === 'li') {
     const li = doc(`<ul><li${b.liAttrs ?? ''}></li></ul>`).querySelector('li');
-    if (v) li.setAttribute('data-order', v); else li.removeAttribute('data-order');
-    return { ...b, order: v, liAttrs: attrs(li) };
+    if (v) li.setAttribute(name, v); else li.removeAttribute(name);
+    return { ...b, ...patch, liAttrs: attrs(li) };
   }
   const el = doc(b.html).firstElementChild;
   if (!el) return b;
-  if (v) el.setAttribute('data-order', v); else el.removeAttribute('data-order');
-  return { ...b, order: v, html: el.outerHTML };
+  if (v) el.setAttribute(name, v); else el.removeAttribute(name);
+  return { ...b, ...patch, html: el.outerHTML };
+}
+/** A block with its delivery number set (a string) or cleared (null). */
+const withOrder = (b, v) => withAttr(b, 'data-order', v, { order: v });
+
+/**
+ * Sets how far in block `at.index` sits in its division's delivery outline (14.1.1): 0 is a main point, 1 a point under
+ * the one preached before it (whatever element that came from), and so on. Its own sub-points stay beneath it.
+ */
+export function setBlockLevel(model, at, level) {
+  const sec = sectionOf(model, at.sec);
+  if (!sec) return model;
+  const blocks = blocksOf(partHtml(sec, at.part));
+  const b = blocks[at.index];
+  const v = Math.max(0, Math.min(8, Math.floor(Number(level) || 0)));
+  if (!b || (b.level ?? 0) === v) return model;
+  blocks[at.index] = withAttr(b, 'data-level', v ? String(v) : null, { level: v });
+  return withSection(model, at.sec, (s) => setPartHtml(s, at.part, blocksHtml(blocks)));
 }
 /** A block worth a number: something to say (not an empty line). */
 export const numberable = (b) => b.depth === 0 && (!!b.text || /<img\b/i.test(b.html));
@@ -323,20 +341,30 @@ export function numberDivision(model, uid, clear = false) {
  * heading itself and isn't numbered stays first, and anything else unnumbered comes last, as it's grouped now.
  */
 export function deliveryUnits(d) {
-  const parts = [{ key: 'lead', title: null, html: partHtml(d, 'lead') }, ...d.subs.map((s) => ({ key: s.key, title: s.title, html: fieldOut(s.field) }))];
+  const parts = [{ uid: 'lead', key: 'lead', title: null, html: partHtml(d, 'lead') }, ...d.subs.map((s) => ({ uid: s.uid, key: s.key, title: s.title, html: fieldOut(s.field) }))];
   const units = [];
   for (const p of parts) {
     const blocks = blocksOf(p.html);
     for (let i = 0; i < blocks.length;) {
       const [, e] = subtree(blocks, i);
       const order = Number(blocks[i].order) || null;
-      units.push({ key: p.key, title: p.title, order, blocks: blocks.slice(i, e), seq: units.length });
+      units.push({ key: p.key, part: p.uid, index: i, title: p.title, order, want: blocks[i].level ?? 0, blocks: blocks.slice(i, e), seq: units.length });
       i = e;
     }
   }
   const rank = (u) => (u.order ? 1 : u.key === 'lead' ? 0 : 2);
-  return units.sort((a, b) => rank(a) - rank(b) || (a.order ?? 0) - (b.order ?? 0) || a.seq - b.seq);
+  units.sort((a, b) => rank(a) - rank(b) || (a.order ?? 0) - (b.order ?? 0) || a.seq - b.seq);
+  // The level each unit gets in the outline: at most one further in than the unit before it (the first is a main point).
+  let prev = -1;
+  for (const u of units) { u.level = Math.max(0, Math.min(u.want, prev + 1)); prev = u.level; }
+  return units;
 }
+
+/** Whether a division's elements are written as outline points (lists, as the builder's steps write them since 14.1.1). */
+const hasPoints = (d) => [partHtml(d, 'lead'), ...d.subs.map((s) => fieldOut(s.field))].some((h) => /^\s*<(ol|ul)\b/i.test(h));
+
+/** Whether any of a division's blocks is set further in than a main point (so it's preached as an outline). */
+export const hasLevels = (d) => [partHtml(d, 'lead'), ...d.subs.map((s) => fieldOut(s.field))].some((h) => /data-level="[1-9]/.test(h));
 
 const hasOrder = (d) => [partHtml(d, 'lead'), ...d.subs.map((s) => fieldOut(s.field))].some((h) => /data-order=/.test(h));
 const elementOf = (key) => (DIVISION_PARTS.some(([k]) => k === key) ? key : 'other');
@@ -368,9 +396,10 @@ function outlineBlocks(units, color) {
     if (!lines.length) continue;
     const label = color && u.key !== 'lead' ? `<span data-element-label="">${esc(u.title ?? '')}</span> ` : '';
     const attrs = color && u.key !== 'lead' ? ` data-element="${elementOf(u.key)}"` : '';
-    out.push({ kind: 'li', tag: 'ol', depth: 0, html: para ? `<p>${label}${lines[0]}</p>` : `${label ? `<p>${label}</p>` : ''}${first.html}`, liAttrs: attrs });
-    for (const l of lines.slice(1)) out.push({ kind: 'li', tag: 'ol', depth: 1, html: `<p>${l}</p>` });
-    for (const b of subs) out.push({ ...b, kind: 'li', tag: 'ol', depth: b.depth + 1, liAttrs: '' });
+    const at = u.level ?? 0;
+    out.push({ kind: 'li', tag: 'ol', depth: at, html: para ? `<p>${label}${lines[0]}</p>` : `${label ? `<p>${label}</p>` : ''}${first.html}`, liAttrs: attrs });
+    for (const l of lines.slice(1)) out.push({ kind: 'li', tag: 'ol', depth: at + 1, html: `<p>${l}</p>` });
+    for (const b of subs) out.push({ ...b, kind: 'li', tag: 'ol', depth: at + b.depth - first.depth, liAttrs: '' });
   }
   return out;
 }
@@ -393,7 +422,9 @@ export function deliveryHtml(html, { order = true, color = false, list = false }
   if (!html || !isSermonHtml(html) || (!color && !(order && /data-order=/.test(html)))) return html;
   const model = parseSermon(html);
   const divisions = model.divisions.map((d) => {
-    if (order && hasOrder(d) && list) {
+    // A division with blocks set further in is an outline wherever it's shown (preaching, Word, PDF): that's the only
+    // way its levels can be seen.
+    if (order && hasOrder(d) && (list || hasLevels(d) || hasPoints(d))) {
       return { ...d, lead: field(`<div data-delivery-list="">${blocksHtml(outlineBlocks(deliveryUnits(d), color))}</div>`), subs: [] };
     }
     if (order && hasOrder(d)) {

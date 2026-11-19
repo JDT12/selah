@@ -4,6 +4,30 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.1.1] - 2026-11-19
+
+Selah 14.1.1: sermon outlines that keep their sub-points in delivery order.
+
+### Changed
+- **Persuasive elements as outline points** (sermon builder steps 7, 8 and 10; `PointsPart` in SermonBuilder.jsx,
+  `pointsOf`/`pointsHtml` in sermon.js): Explanation, Illustration, Argumentation and Application are typed line by
+  line in the outline editor the lesson builder uses (Enter, Tab/Shift+Tab, Alt+↑/↓). Each top-level line is a main
+  point with the lines under it as its sub-points, written to the note as a nested numbered list. An element's
+  paragraphs open as main points (a paragraph's further lines as points under it) and keep their delivery numbers;
+  the note changes only when the element is edited. An element holding a quote or a picture stays as it was.
+- **Delivery Order lists every line** (Arrange board): each numbered point with its own sub-points under it, marked
+  with the outline numbering, so an illustration numbered 5th shows as 5. with A., B., I. beneath it.
+- A division whose elements are outline points is preached as an outline in its delivery order (preaching mode,
+  Word, PDF), its main points numbered in delivery order and their sub-points beneath them.
+- The outline editor (lesson and sermon builders) numbers its levels 1. A. I. 1. a. i., as the note, preaching mode
+  and Word do (it had a. at the fourth level). Arrange's Full Text, teaching mode and sources use the same numbering.
+
+### Added
+- **A point under another element's point** (Arrange → Delivery Order): Indent and Outdent (or Tab and Shift+Tab on
+  a selected row; the buttons show on hover) put a whole point, with its sub-points, under the point preached before
+  it, from any element (`setBlockLevel`, `data-level` on the block, kept through edits like `data-order`). A division
+  with points set in is always preached as an outline.
+
 ## [14.1.0] - 2026-11-17
 
 Selah 14.1: Selah Cloud and Selah Ministry install from a published image, and the share hub.
