@@ -10,7 +10,7 @@
 'use strict';
 
 const { app, BrowserWindow, Menu, Notification, Tray, dialog, globalShortcut, ipcMain, nativeImage, net, powerMonitor,
-  safeStorage, screen, session, shell, systemPreferences } = require('electron');
+  powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences } = require('electron');
 const { spawn, execFile } = require('node:child_process');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -162,7 +162,10 @@ async function startServer() {
   fs.closeSync(out);
   const origin = `http://127.0.0.1:${port}`;
   server = { proc, port, key, origin };
+  // 14.2: the server says when phones and tablets can reach it (server/localnetwork.js).
+  proc.on('message', (m) => { if (m?.type === 'local-network') { lanServing = !!m.on; keepAwakeForLan(); } });
   proc.on('exit', (code) => {
+    if (server?.proc === proc) { lanServing = false; keepAwakeForLan(); }
     log(`Server stopped (${code}).`);
     if (server?.proc === proc) {
       server = null;
@@ -180,6 +183,37 @@ async function startServer() {
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error('Selah’s server didn’t start in time.');
+}
+
+// ---------- 14.2: phones and tablets on the Wi-Fi ----------
+let lanServing = false;
+let awakeId = null;
+/** Keeps the PC from sleeping while phones and tablets can open Selah, when that's chosen (the screen can still sleep). */
+function keepAwakeForLan() {
+  const want = lanServing && !!settings.lanKeepAwake;
+  if (want && awakeId === null) awakeId = powerSaveBlocker.start('prevent-app-suspension');
+  if (!want && awakeId !== null) { powerSaveBlocker.stop(awakeId); awakeId = null; }
+  if (tray) tray.setToolTip(lanServing ? 'Selah (phones and tablets can open it)' : 'Selah');
+}
+
+// Windows Firewall: a rule letting phones and tablets on private networks reach Selah's port.
+const FIREWALL_RULE = 'Selah Desktop (phones and tablets)';
+function firewallStatus() {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  return new Promise((resolve) => {
+    execFile('netsh', ['advfirewall', 'firewall', 'show', 'rule', `name=${FIREWALL_RULE}`], { windowsHide: true }, (err) => resolve(!err));
+  });
+}
+/** Adds the rule, which needs the administrator's OK (Windows asks). */
+function allowFirewall(port) {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  const p = Number(port);
+  if (!Number.isInteger(p) || p < 1024 || p > 65535) return Promise.reject(new Error('Bad port'));
+  const args = `advfirewall firewall add rule name="${FIREWALL_RULE}" dir=in action=allow protocol=TCP localport=${p} profile=private program="${process.execPath}"`;
+  const ps = `Start-Process -FilePath netsh -ArgumentList '${args.replace(/'/g, "''")}' -Verb RunAs -Wait -WindowStyle Hidden`;
+  return new Promise((resolve) => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true }, () => firewallStatus().then(resolve));
+  });
 }
 
 function stopServer() {
@@ -524,6 +558,7 @@ function appSettingsView() {
     helloAvailable: helloAvailable === 'Available',
     platform: process.platform,
     root: DIRS.root,
+    lanKeepAwake: !!settings.lanKeepAwake,
   };
 }
 
@@ -559,6 +594,7 @@ function bridge() {
   handle('app-settings', () => appSettingsView());
   handle('set-app-settings', async (_e, patch = {}) => {
     if ('startWithWindows' in patch) setStartWithWindows(!!patch.startWithWindows);
+    if ('lanKeepAwake' in patch) { saveSettings({ lanKeepAwake: !!patch.lanKeepAwake }); keepAwakeForLan(); }
     if ('lock' in patch) {
       if (!patch.lock) saveSettings({ lock: null });
       else {
@@ -579,6 +615,8 @@ function bridge() {
     app.exit(0);
   });
   handle('check-for-updates', () => checkForUpdates(true));
+  handle('firewall-status', () => firewallStatus());
+  handle('allow-firewall', (_e, port) => allowFirewall(port));
   // The lock page.
   handle('unlock-pin', async (_e, pin) => {
     pinTries = pinTries.filter((t) => Date.now() - t < 5 * 60_000);

@@ -198,88 +198,137 @@ const ago = (t) => {
 };
 
 /**
- * Parked in 14.0 (not shown; server/companionsync.js starts only with NOTEAPP_COMPANION_SYNC=1), kept for 14.1.
- * Companion sync: Selah Companion on an iPad takes a copy of your sermons, lessons and studies over your own Wi-Fi.
- * Off until switched on; then an iPad is paired once by scanning a code.
+ * 14.2 local network mode (server/localnetwork.js): "Use Selah on my phone and tablet". The Selah app on a phone or
+ * tablet on the same Wi-Fi opens this library, the whole app, and its changes come straight here. Off until switched
+ * on; then each device is paired once by scanning a code, and can be removed here.
  */
-export function CompanionSync() {
+export function LocalNetwork() {
   const dialog = useDialog();
   const [s, setS] = useState(null);
   const [busy, setBusy] = useState(false);
-  const refresh = useCallback(() => api.companionSync().then(setS).catch(() => setS(null)), []);
-  useEffect(() => { refresh(); }, [refresh]);
+  const [app, setApp] = useState(null);
+  const [firewall, setFirewall] = useState(null);
+  const refresh = useCallback(() => api.localNetwork().then(setS).catch(() => setS(null)), []);
+  useEffect(() => {
+    refresh();
+    electron()?.appSettings?.().then(setApp).catch(() => {});
+    electron()?.firewallStatus?.().then(setFirewall).catch(() => {});
+  }, [refresh]);
   if (!s) return null;
   const toggle = async () => {
     setBusy(true);
-    try { setS(await api.setCompanionSync(!s.on)); } catch (e) { dialog.toast(e.message, 'error', 7000); }
+    try { setS(await api.setLocalNetwork(!s.on)); } catch (e) { dialog.toast(e.message, 'error', 7000); }
     setBusy(false);
   };
   const pair = async () => {
     try {
-      const code = await api.pairCompanion();
-      await dialog.open((c) => <PairDialog code={code} close={c} />);
+      const code = await api.pairDevice();
+      await dialog.open((c) => <DevicePairDialog code={code} close={c} />);
       refresh();
     } catch (e) { dialog.toast(e.message, 'error', 7000); }
   };
   const remove = async (d) => {
-    if (!(await dialog.confirm({ title: `Remove ${d.name}?`, message: 'It stops syncing. What it already has stays on the iPad until you remove it there.', okLabel: 'Remove', danger: true }))) return;
-    try { setS(await api.removeCompanion(d.id)); } catch (e) { dialog.toast(e.message, 'error'); }
+    if (!(await dialog.confirm({ title: `Remove ${d.name}?`, message: 'It can’t open this library any more until you pair it again. Copies it saved to read offline stay on it until you remove the Selah app there.', okLabel: 'Remove', danger: true }))) return;
+    try { setS(await api.removeDevice(d.id)); } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+  const keepAwake = async (on) => {
+    try { setApp(await electron().setAppSettings({ lanKeepAwake: on })); } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+  const allow = async () => {
+    try {
+      const ok = await electron().allowFirewall(s.port);
+      setFirewall(ok);
+      dialog.toast(ok ? 'Windows Firewall now lets phones and tablets in on private networks.' : 'Windows Firewall wasn’t changed.', ok ? undefined : 'error', 7000);
+    } catch (e) { dialog.toast(e.message, 'error'); }
   };
   return (
     <>
       <div className="about-row">
         <span className="muted">
-          {!s.on ? <>Sync with Selah Companion on your iPad over this Wi-Fi: your sermons, lessons and studies, ready to preach and teach from with no connection. Nothing goes through the internet.</>
+          {!s.on ? <>Open this library in the Selah app on your phone or tablet, over your own Wi-Fi: everything, as on this PC, and what you change there is saved here. Nothing goes through the internet.</>
             : s.error ? <span className="form-error">{s.error}</span>
-              : s.listening ? <>On. Your iPad syncs whenever it and this PC are on the same Wi-Fi and Selah is open.</>
+              : s.listening ? <>On. Paired phones and tablets on the same Wi-Fi can open Selah while it’s running on this PC, even in the {desktopWords().tray}.</>
                 : <>Starting…</>}
         </span>
         <span className="about-btns">
-          {s.on && <button className="btn btn-small btn-primary" onClick={pair} disabled={!s.listening}><Icon name="plus" size={14} /> Pair an iPad</button>}
+          {s.on && <button className="btn btn-small btn-primary" onClick={pair} disabled={!s.listening}><Icon name="plus" size={14} /> Pair a device</button>}
           <button className="btn btn-small" onClick={toggle} disabled={busy}>{s.on ? 'Turn off' : 'Turn on'}</button>
         </span>
       </div>
-      {s.on && s.devices.length > 0 && (
-        <ul className="companion-devices">
-          {s.devices.map((d) => (
-            <li key={d.id}>
-              <Icon name="tablet" size={16} />
-              <span className="companion-device-name">{d.name}</span>
-              <span className="muted">Last synced {ago(d.last_seen_at)}</span>
-              <button className="btn btn-small" onClick={() => remove(d)}>Remove</button>
-            </li>
-          ))}
-        </ul>
+      {s.on && (
+        <>
+          {s.devices.length > 0 ? (
+            <ul className="companion-devices">
+              {s.devices.map((d) => (
+                <li key={d.id}>
+                  <Icon name="tablet" size={16} />
+                  <span className="companion-device-name">{d.name}</span>
+                  <span className="muted">{d.last_seen_at ? `Last used ${ago(d.last_seen_at)}` : 'Paired'}</span>
+                  <button className="btn btn-small" onClick={() => remove(d)}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="muted">No devices paired yet. Choose Pair a device, then scan the code with your phone or tablet.</p>}
+          {app && (
+            <label className="lan-check">
+              <input type="checkbox" checked={!!app.lanKeepAwake} onChange={(e) => keepAwake(e.target.checked)} />
+              <span>Keep this PC awake while this is on <span className="muted">(the screen can still turn off)</span></span>
+            </label>
+          )}
+          {firewall === false && (
+            <div className="about-row">
+              <span className="muted">If your phone can’t reach this PC, Windows Firewall may be blocking it.</span>
+              <button className="btn btn-small" onClick={allow}>Allow in Windows Firewall</button>
+            </div>
+          )}
+          <p className="muted lan-note">This PC: {s.name}{s.addresses.length ? ` (${s.addresses.join(', ')})` : ''}, port {s.port}. Phones and tablets check this PC’s own certificate, so no other device can stand in for it.</p>
+        </>
       )}
     </>
   );
 }
 
-function PairDialog({ code, close }) {
-  const dialog = useDialog();
+function DevicePairDialog({ code, close }) {
   const [left, setLeft] = useState(() => code.expires_at - Date.now());
+  const [paired, setPaired] = useState(null);
   useEffect(() => {
     const t = setInterval(() => setLeft(code.expires_at - Date.now()), 1000);
     return () => clearInterval(t);
   }, [code.expires_at]);
+  // Waits for the phone to use the code, to say so here.
+  useEffect(() => {
+    if (paired) return undefined;
+    const t = setInterval(() => {
+      api.pairStatus(code.id).then((r) => { if (r.paired) setPaired(r.name || 'Your device'); }).catch(() => {});
+    }, 2000);
+    return () => clearInterval(t);
+  }, [code.id, paired]);
   const mins = Math.max(0, Math.ceil(left / 60_000));
+  if (paired) {
+    return (
+      <div className="stack-form">
+        <h2>Paired</h2>
+        <p><strong>{paired}</strong> can now open this library while it’s on the same Wi-Fi as this PC.</p>
+        <div className="modal-actions"><button type="button" className="btn btn-primary" onClick={() => close()}>Done</button></div>
+      </div>
+    );
+  }
   return (
     <div className="stack-form">
-      <h2>Pair an iPad</h2>
+      <h2>Pair a phone or tablet</h2>
       <div className="companion-pair">
-        {left > 0 ? <div className="qr-box" role="img" aria-label="QR code for Selah Companion" dangerouslySetInnerHTML={{ __html: code.qr }} /> : <div className="qr-box qr-loading" />}
+        {left > 0 ? <div className="qr-box" role="img" aria-label="Pairing code for the Selah app" dangerouslySetInnerHTML={{ __html: code.qr }} /> : <div className="qr-box qr-loading" />}
         <ol className="companion-steps">
-          <li>On the iPad, open <strong>Selah Companion</strong>.</li>
-          <li>Tap <strong>Sync with Selah Desktop</strong>, then <strong>Scan code</strong>.</li>
-          <li>Point the camera at this code. The iPad and this PC must be on the same Wi-Fi.</li>
+          <li>Put the Selah app on your phone or tablet.</li>
+          <li>Point its camera at this code, and open the link in Selah.</li>
+          <li>Tap OK to connect. The device and this PC must be on the same Wi-Fi.</li>
         </ol>
       </div>
-      <p className="muted">{left > 0 ? `The code works for ${mins} more minute${mins === 1 ? '' : 's'}, for one iPad.` : 'This code has expired. Close this and pair again.'}</p>
-      <p className="muted">The first time, Windows may ask whether Selah can use your network. Choose <strong>Private networks</strong>.</p>
+      <p className="muted">{left > 0 ? `The code works for ${mins} more minute${mins === 1 ? '' : 's'}, for one device.` : 'This code has expired. Close this and pair again.'}</p>
+      {window.selahDesktop?.platform === 'win32' && <p className="muted">The first time, Windows may ask whether Selah can use your network. Choose <strong>Private networks</strong>.</p>}
+      {window.selahDesktop?.platform === 'darwin' && <p className="muted">The first time, your Mac may ask whether Selah can accept incoming connections. Choose <strong>Allow</strong>.</p>}
       <div className="modal-actions">
-        {/* For an iPad whose camera can't be used: paste the code into Selah Companion instead. */}
-        <button type="button" className="btn" disabled={left <= 0} onClick={() => navigator.clipboard?.writeText(code.code).then(() => dialog.toast('Code copied'), () => dialog.toast('Couldn’t copy it', 'error'))}>Copy code</button>
-        <button type="button" className="btn btn-primary" onClick={() => close()}>Done</button>
+        <button type="button" className="btn btn-primary" onClick={() => close()}>Close</button>
       </div>
     </div>
   );

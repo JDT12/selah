@@ -134,6 +134,8 @@ export default async function routes(app) {
     edition: config.edition,
     // 14.1: Selah Cloud in its container (docker/cloud/): set up by a setup link, updated from Settings.
     container: config.cloudContainer,
+    // 14.2: this page is on a phone or tablet, opened from Selah Desktop over the Wi-Fi (server/localnetwork.js).
+    lan: !!req.raw.selahLanDevice,
   }));
 
   app.get('/api/version', async () => ({ version: VERSION }));

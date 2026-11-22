@@ -7,9 +7,9 @@ import { version } from '../../../package.json';
 import { useDialog } from './Dialogs.jsx';
 import AccountPane from './AccountPane.jsx';
 import { WhatsNewDialog } from './WhatsNew.jsx';
-import { cloudContainer, isDesktopEdition, isHosted, isOwnServer } from '../mode.js';
+import { cloudContainer, isDesktopEdition, isHosted, isOwnServer, onDesktopLan } from '../mode.js';
 import CloudUpdatesRow, { CloudRestoreRow } from './CloudUpdates.jsx';
-import { DesktopAppRow, DesktopBackups } from './DesktopSettings.jsx';
+import { DesktopAppRow, DesktopBackups, LocalNetwork } from './DesktopSettings.jsx';
 import { OffsiteBackupRow } from './OffsiteBackup.jsx';
 import { BackupDownloadRow } from './BackupDownload.jsx';
 import ImportDialog from './ImportDialog.jsx';
@@ -57,6 +57,8 @@ const TABS = [
   { key: 'general', label: 'General', icon: 'settings' },
   { key: 'connections', label: 'Connections', icon: 'link' },
   { key: 'data', label: 'Data & backup', icon: 'folder' },
+  // 14.2: Selah Desktop only, on the PC itself (server/localnetwork.js)
+  { key: 'devices', label: 'Phone and tablet', icon: 'tablet' },
   { key: 'account', label: 'Account', icon: 'users' },
   { key: 'security', label: 'Security', icon: 'lock' },
   { key: 'about', label: 'About', icon: 'callout' },
@@ -67,8 +69,11 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
   // The last tab you used opens next time.
   const [tab, setTab] = useStoredState('noteapp.settingsTab', 'general');
   // Selah Desktop has no sign-in, so no Account or Security tabs (its lock is under General → App).
-  const tabs = isDesktopEdition() ? TABS.filter((t) => t.key !== 'account' && t.key !== 'security')
-    : device.full ? TABS : TABS.filter((t) => t.key !== 'connections' && t.key !== 'data');
+  // 14.2: on a phone or tablet opening Selah Desktop over the Wi-Fi, it's the phone's Settings (the PC keeps its own).
+  const lanPhone = onDesktopLan();
+  const tabs = TABS.filter((t) => (t.key !== 'devices' || (isDesktopEdition() && !lanPhone && !!window.selahDesktop))
+    && (!isDesktopEdition() || (t.key !== 'account' && t.key !== 'security'))
+    && ((isDesktopEdition() ? !lanPhone : device.full) || (t.key !== 'connections' && t.key !== 'data')));
   const current = tabs.some((t) => t.key === tab) ? tab : 'general';
   // The dialog is rendered once when opened, so the `theme` prop never updates;
   // track the choice locally so the selector moves as soon as it's clicked.
@@ -160,7 +165,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
         {isMobileApp() ? (
           <>
             <div className="about-row">
-              <span className="muted">This device opens {location.host}.</span>
+              <span className="muted">{onDesktopLan() ? 'This device opens Selah Desktop on your PC, over the Wi-Fi.' : `This device opens ${location.host}.`}</span>
               <button type="button" className="btn btn-small" onClick={changeServer}>Use a different Selah</button>
             </div>
             <MobileLockRow />
@@ -201,6 +206,12 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
         </div>
 
         <BibleSettings />
+      </>
+    ),
+    devices: (
+      <>
+        <h3>Use Selah on my phone and tablet</h3>
+        <LocalNetwork />
       </>
     ),
     data: (

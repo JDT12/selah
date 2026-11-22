@@ -14,7 +14,7 @@ import { useNoteActions } from '../components/useNoteActions.jsx';
 import { openCategories } from '../components/EventCategories.jsx';
 import { NONE, shownWith, useEventCategories, useHiddenCategories } from '../eventCategories.js';
 import { showDeskTab, showStudy } from './DeskPage.jsx';
-import { isDesktopEdition, isHosted } from '../mode.js';
+import { isDesktopEdition, isHosted, onDesktopLan } from '../mode.js';
 import HomeTabs from './HomeTabs.jsx';
 import WorkList, { useDeleteWork, useMarkDone } from '../components/WorkList.jsx';
 import { DueThisWeek } from '../components/ClassView.jsx';
@@ -587,6 +587,8 @@ function SharedCard({ sharing, onOpenNote }) {
 /** One quiet line: space used and the last backup, in color when something needs a look. */
 function StatusLine({ status, onSettings }) {
   const { storage, offsite, host, auto } = status;
+  // 14.2: on a phone opening Selah Desktop over the Wi-Fi, the PC's backups and space are the PC's to look after.
+  if (onDesktopLan()) return null;
   const parts = [];
   let warn = false;
   // 13.0: space used is in Settings; Home only warns when it's nearly full.

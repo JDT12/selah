@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld('selahDesktop', {
   setAppSettings: call('set-app-settings'),
   setServer: call('set-server'),
   checkForUpdates: call('check-for-updates'),
+  // 14.2: Windows Firewall for phones and tablets on the Wi-Fi (true/false; null on Mac and Linux)
+  firewallStatus: call('firewall-status'),
+  allowFirewall: call('allow-firewall'),
   // pages/lock.html and pages/welcome.html
   unlockPin: call('unlock-pin'),
   unlockHello: call('unlock-hello'),

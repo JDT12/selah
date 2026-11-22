@@ -35,6 +35,8 @@ const fs = () => native()?.Plugins?.Filesystem ?? null;
 const shellUrl = (query) => `${mobilePlatform() === 'ios' ? 'capacitor://localhost' : 'https://localhost'}/index.html?${query}`;
 export const changeServer = () => { location.href = shellUrl('change=1'); };
 export const openSavedCopies = () => { location.href = shellUrl('offline=1'); };
+/** 14.2: Selah Desktop no longer knows this device (removed there): the app's page says so and offers pairing again. */
+export const backToPairing = () => { location.href = shellUrl('unpaired=1'); };
 
 // 14.0: the app may open any Selah server, so it lets the web view go anywhere (capacitor.config.json). Pages on other
 // sites open in the in-app browser instead of taking Selah's place, and a connect link (selahapp://connect, the QR code

@@ -3,7 +3,7 @@ import DeviceReadOnly from './components/DeviceReadOnly.jsx';
 import { canOpenSection, device } from './device.js';
 import { startLive, stopLive } from './live.js';
 import { forgetPush, isDesktopApp, notify, startReminders } from './desktop.js';
-import { forgetDevice, listenForQuickActions, listenForShares } from './mobile.js';
+import { backToPairing, forgetDevice, isMobileApp, listenForQuickActions, listenForShares } from './mobile.js';
 import { canQueue, flushCaptureQueue, isOffline, queueCapture, saveCapture } from './captureSave.js';
 import MobileOffline from './components/MobileOffline.jsx';
 import { api, setConfirmIdentity } from './api.js';
@@ -100,7 +100,12 @@ export default function App() {
       .catch(() => setAuth('login'));
     const onUnauthorized = () => setAuth('login');
     window.addEventListener('noteapp:unauthorized', onUnauthorized);
-    return () => window.removeEventListener('noteapp:unauthorized', onUnauthorized);
+    const onUnpaired = () => { if (isMobileApp()) backToPairing(); };
+    window.addEventListener('noteapp:unpaired', onUnpaired);
+    return () => {
+      window.removeEventListener('noteapp:unauthorized', onUnauthorized);
+      window.removeEventListener('noteapp:unpaired', onUnpaired);
+    };
   }, []);
 
   // Signed out (or the session ran out): whether to ask for the username or email may have changed since the app opened.

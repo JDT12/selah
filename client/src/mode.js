@@ -12,7 +12,7 @@ export const setServerInfo = (s) => {
   // A server from before 14.0 sends only edition ('desktop' or 'server').
   const product = PRODUCTS.includes(s?.product) ? s.product
     : mode !== 'single' ? 'ministry' : s?.edition === 'desktop' ? 'desktop' : 'cloud';
-  info = { mode, tenant: s?.tenant ?? null, product, container: !!s?.container };
+  info = { mode, tenant: s?.tenant ?? null, product, container: !!s?.container, lan: !!s?.lan };
 };
 export const serverMode = () => info.mode;
 /** Selah Cloud in its container (14.1, docker/cloud/): set up by a setup link, updated from Settings. */
@@ -22,6 +22,8 @@ export const isHosted = () => info.mode !== 'single';
 export const tenantName = () => info.tenant;
 /** Selah Desktop's own library (Offline mode), not a server: no sign-in, sharing, phone remote or maintenance. */
 export const isDesktopEdition = () => info.product === 'desktop';
+/** 14.2: this page is on a phone or tablet, opened from Selah Desktop over the Wi-Fi (server/localnetwork.js). */
+export const onDesktopLan = () => info.product === 'desktop' && info.lan;
 /** One person's own server (home or VPS), looked after with the selah command. */
 export const isOwnServer = () => info.product === 'cloud';
 /** Sharing between people is a Selah Ministry feature, on a tenant's Selah (14.0). */

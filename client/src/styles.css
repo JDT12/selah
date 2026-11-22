@@ -6559,3 +6559,8 @@ body.has-full-drawing .ar-tabbar { display: none !important; }
 :is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol { list-style-type: lower-alpha; }
 :is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol ol { list-style-type: lower-roman; }
 :is(.present-body, .sources-note-body, .ab-html) ol ol ol ol ol ol ol { list-style-type: paren-decimal; }
+
+/* 14.2: Settings → Phone and tablet (Selah Desktop) */
+.lan-check { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0; cursor: pointer; }
+.lan-check input { margin-top: 3px; }
+.lan-note { font-size: 0.85rem; margin-top: 10px; }

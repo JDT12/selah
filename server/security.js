@@ -151,6 +151,8 @@ export function requestChecks(app) {
         return reply.code(401).send({ error: 'Not signed in' });
       }
       req.session = DESKTOP_SESSION();
+      // 14.2: a paired phone or tablet on the Wi-Fi (localnetwork.js), let in as this PC's own window.
+      if (req.raw.selahLanDevice) req.session.app = 'lan';
       return;
     }
 

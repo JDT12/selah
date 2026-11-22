@@ -4,6 +4,28 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.2.0] - 2026-11-22
+
+Selah 14.2: local network mode. The Selah app on a phone or tablet opens Selah Desktop's library over the Wi-Fi.
+
+### Added
+- **Use Selah on my phone and tablet** (Selah Desktop, Settings → Phone and tablet; server/localnetwork.js): off by
+  default. When on, a second listener (HTTPS, port 47631) serves the whole app to paired devices on the network; the
+  PC's own listener still answers only the PC. Its certificate is made by the PC itself (server/lancert.js, ECDSA
+  P-256 via node:crypto, kept in data/local-network). A request from a paired device goes through Selah exactly as one
+  from the PC's window (`app.routing` with the desktop key), so everything works as on the PC; only this tab's own
+  settings stay on the PC. Devices can be removed (their connections end at once). Keep this PC awake (power save
+  blocker while serving), an Allow in Windows Firewall button (a rule for Selah on private networks, with Windows'
+  OK), and the tray tooltip says when devices can connect.
+- **Pairing by QR code**: `selahapp://desktop?…` carries the PC's name, addresses, port, certificate fingerprint and
+  a key made for one device (ten minutes, one device). The PC keeps only the key's hash. The app trusts that
+  certificate and no other for the PC, pinned natively (Android: LanWebViewClient + SelahLanPlugin; iOS: SelahLanPlugin
+  answering the web view's challenges, and the TV slides window), and keeps the key in the Keychain or Keystore.
+- **In the app**: Scan the code on the first screen (Android, BarcodeDetector; on iPhone and iPad the Camera app opens
+  the link), finds the PC at whichever of its addresses answers (Wi-Fi first), keeps up with new addresses, searches
+  the PC's network when none answer (the saved copies show meanwhile), and says when the PC has removed the device.
+  Needs new app builds (camera permission on Android; local network and Bonjour keys on iOS).
+
 ## [14.1.1] - 2026-11-19
 
 Selah 14.1.1: sermon outlines that keep their sub-points in delivery order.

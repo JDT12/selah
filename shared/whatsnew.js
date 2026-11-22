@@ -4,6 +4,16 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.2.0',
+    date: '2026-11-22',
+    title: 'Selah Desktop on your phone and tablet',
+    items: [
+      'In Selah Desktop, Settings → Phone and tablet opens your library in the Selah app on your phone or tablet, over your own Wi-Fi. Everything works as on the computer, and what you change there is saved on the computer.',
+      'Pair each device once by scanning a code. Nothing goes through the internet, and only the devices you pair get in. Remove one any time.',
+      'Selah keeps serving from the tray, can keep the computer awake while it does, and finds the computer again if its address changes.',
+    ],
+  },
+  {
     version: '14.1.1',
     date: '2026-11-19',
     title: 'Sermon outlines that keep their sub-points',

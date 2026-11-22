@@ -17,6 +17,8 @@ export async function request(method, url, body, retried = false) {
     window.dispatchEvent(new Event('noteapp:unauthorized'));
   }
   const data = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+  // 14.2: this phone was removed from Selah Desktop (server/localnetwork.js): back to the app's own page to pair again.
+  if (res.status === 401 && data?.lan === 'unpaired') window.dispatchEvent(new Event('noteapp:unpaired'));
   if (res.status === 403 && data?.reauth && !retried && confirmIdentity && await confirmIdentity()) {
     return request(method, url, body, true);
   }
@@ -305,6 +307,12 @@ export const api = {
   noteInk: (noteId) => request('GET', `/api/notes/${noteId}/ink`),
   saveNoteInk: (noteId, strokes) => request('PUT', `/api/notes/${noteId}/ink`, { strokes }),
   // Companion sync (Selah Desktop): the iPad on the same Wi-Fi.
+  // 14.2: phones and tablets on the Wi-Fi open Selah Desktop's library (server/localnetwork.js)
+  localNetwork: () => request('GET', '/api/local-network'),
+  setLocalNetwork: (on) => request('PUT', '/api/local-network', { on }),
+  pairDevice: () => request('POST', '/api/local-network/pair', {}),
+  pairStatus: (id) => request('GET', `/api/local-network/pair/${encodeURIComponent(id)}`),
+  removeDevice: (id) => request('DELETE', `/api/local-network/devices/${encodeURIComponent(id)}`),
   companionSync: () => request('GET', '/api/companion-sync'),
   setCompanionSync: (on) => request('PUT', '/api/companion-sync', { on }),
   pairCompanion: () => request('POST', '/api/companion-sync/pair', {}),
