@@ -39,9 +39,15 @@ function GroupDialog({ group, kind: startKind = 'class', close }) {
   const [kind, setKind] = useState(group?.kind ?? startKind);
   const [mode, setMode] = useState(group?.mode ?? (startKind === 'service' ? 'headcount' : 'roster'));
   const [eventId, setEventId] = useState(group?.event_id ? String(group.event_id) : '');
+  // 14.3: the lesson or sermon series it's taught from (its lessons get the Attendance button in Preach and Teach).
+  const [series, setSeries] = useState([]);
+  const [studyId, setStudyId] = useState(group?.study_id ? String(group.study_id) : '');
   const [people, setPeople] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => { api.attendanceEvents().then(setEvents).catch(() => setEvents([])); }, []);
+  useEffect(() => {
+    api.studies().then((all) => setSeries(all.filter((x) => ['teaching', 'preaching', 'class'].includes(x.kind) && (x.status !== 'archived' || String(x.id) === studyId)))).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const pickEvent = (v) => {
     setEventId(v);
     const ev = events.find((e) => String(e.id) === v);
@@ -52,7 +58,7 @@ function GroupDialog({ group, kind: startKind = 'class', close }) {
     if (!name.trim()) return;
     setBusy(true);
     try {
-      const body = { name: name.trim(), kind, mode, event_id: eventId ? Number(eventId) : null };
+      const body = { name: name.trim(), kind, mode, event_id: eventId ? Number(eventId) : null, study_id: studyId ? Number(studyId) : null };
       if (group) { await api.updateAttendanceGroup(group.id, body); close(group.id); return; }
       const { id } = await api.createAttendanceGroup({ ...body, people: mode === 'roster' ? people.split(/\n|;/).map((s) => s.trim()).filter(Boolean) : [] });
       close(id);
@@ -84,6 +90,15 @@ function GroupDialog({ group, kind: startKind = 'class', close }) {
         </select>
         <span className="muted atn-field-hint">Pick its repeating event on the calendar and its meetings show up here on their own.</span>
       </label>
+      {kind !== 'group' && (
+        <label className="field">Taught from
+          <select className="input" value={studyId} onChange={(e) => setStudyId(e.target.value)}>
+            <option value="">No series</option>
+            {series.map((st) => <option key={st.id} value={st.id}>{st.title || 'Untitled'}{st.kind === 'preaching' ? ' (sermon series)' : ''}</option>)}
+          </select>
+          <span className="muted atn-field-hint">Every lesson or sermon in the series gets an Attendance button in Preach and Teach.</span>
+        </label>
+      )}
       <label className="field">Name
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder={NAME_EXAMPLE[kind] ?? ''} autoFocus={!group} />
       </label>
@@ -340,7 +355,7 @@ function GroupView({ id, onBack, onChanged }) {
         <span className="atn-kind-icon"><Icon name={KIND_ICON[g.kind] ?? 'users'} size={18} /></span>
         <div className="atn-group-title">
           <h2>{g.name}</h2>
-          <p className="muted">{g.kind_label}{g.event ? ` · ${eventLabel(g.event)}` : ' · not on the calendar'}{g.average != null ? ` · about ${g.average} a week` : ''}</p>
+          <p className="muted">{g.kind_label}{g.event ? ` · ${eventLabel(g.event)}` : ' · not on the calendar'}{g.study ? ` · taught from ${g.study.title || 'a series'}` : ''}{g.average != null ? ` · about ${g.average} a week` : ''}</p>
         </div>
         <a className="btn btn-small" href={csv} download><Icon name="download" size={13} /> CSV</a>
         <Menu align="right" trigger={({ toggle }) => <button type="button" className="icon-btn" onClick={toggle} aria-label="More"><Icon name="more" size={16} /></button>} items={[

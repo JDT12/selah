@@ -47,6 +47,21 @@ CREATE TABLE IF NOT EXISTS att_marks (
 );
 `);
 
+// 14.3: a group can teach a series (a lesson or sermon series: a Desk study), so every lesson or sermon in it has the
+// group's Attendance button in Preach and Teach, with nothing to set on the calendar.
+if (!db.prepare("SELECT 1 FROM pragma_table_info('att_groups') WHERE name = 'study_id'").get()) {
+  db.exec('ALTER TABLE att_groups ADD COLUMN study_id INTEGER REFERENCES studies(id) ON DELETE SET NULL');
+}
+/** The series a group can follow: lesson and sermon series, and classes. */
+const SERIES_KINDS = ['teaching', 'preaching', 'class'];
+function checkStudy(v) {
+  if (v == null || v === '') return null;
+  const id = Number(v);
+  const st = Number.isInteger(id) ? db.prepare('SELECT id, kind FROM studies WHERE id = ?').get(id) : null;
+  if (!st || !SERIES_KINDS.includes(st.kind)) throw httpError(400, 'That isn’t a lesson or sermon series');
+  return id;
+}
+
 export const KINDS = { class: 'Class', service: 'Service', group: 'Small group' };
 const MODES = ['roster', 'headcount'];
 /** Misses in a row before a nudge. */
@@ -150,6 +165,7 @@ function summary(g) {
   const next = eventDates(g.event_id, t, addDays(t, 15))[0] ?? null;
   return {
     ...g, archived: !!g.archived, kind_label: KINDS[g.kind] ?? g.kind, event: ev ?? null,
+    study: g.study_id ? db.prepare('SELECT id, title, kind FROM studies WHERE id = ?').get(g.study_id) ?? null : null,
     people: people.filter((p) => p.active && !p.visitor).length, visitors: people.filter((p) => p.active && p.visitor).length,
     meetings: meetings.length, last: meetings.at(-1)?.date ?? null, last_count: meetings.length ? countOf(g, meetings.at(-1)) : null,
     average: recent.length ? Math.round(recent.reduce((s, m) => s + countOf(g, m), 0) / recent.length) : null,
@@ -218,14 +234,26 @@ export default async function attendance(app) {
   // 13.0: Preach and Teach take attendance for a sermon or lesson linked to an event whose group meets then.
   app.get('/api/notes/:id/attendance', async (req) => {
     const noteId = intParam(req.params.id);
+    // The note set on the group's calendar event (or one of its occurrences); 14.3: or a lesson or sermon in the series
+    // the group teaches.
     const g = db.prepare(`SELECT g.* FROM att_groups g JOIN events e ON e.id = g.event_id
       WHERE g.archived = 0 AND (e.note_id = ? OR EXISTS (SELECT 1 FROM events x WHERE x.parent_id = e.id AND x.note_id = ?))
-      ORDER BY g.id LIMIT 1`).get(noteId, noteId);
+      ORDER BY g.id LIMIT 1`).get(noteId, noteId)
+      ?? db.prepare(`SELECT g.* FROM att_groups g WHERE g.archived = 0 AND g.study_id IN (
+          SELECT study_id FROM study_notes WHERE note_id = ? UNION SELECT study_id FROM study_items WHERE note_id = ?)
+        ORDER BY g.id LIMIT 1`).get(noteId, noteId);
     if (!g) return { group: null };
     const t = today();
-    const recent = eventDates(g.event_id, addDays(t, -7), addDays(t, 1));
-    const next = eventDates(g.event_id, t, addDays(t, 60))[0];
-    const date = recent.includes(t) ? t : recent.at(-1) ?? next ?? t;
+    let date = t;
+    if (g.event_id) {
+      const recent = eventDates(g.event_id, addDays(t, -7), addDays(t, 1));
+      const next = eventDates(g.event_id, t, addDays(t, 60))[0];
+      date = recent.includes(t) ? t : recent.at(-1) ?? next ?? t;
+    } else if (g.study_id) {
+      // No calendar event: the lesson's own session date when it's this week, else today.
+      const item = db.prepare("SELECT date FROM study_items WHERE study_id = ? AND note_id = ? AND date IS NOT NULL ORDER BY date DESC LIMIT 1").get(g.study_id, noteId);
+      if (item?.date && item.date >= addDays(t, -6) && item.date <= addDays(t, 1)) date = item.date;
+    }
     return { group: { id: g.id, name: g.name, mode: g.mode }, date };
   });
 
@@ -243,8 +271,8 @@ export default async function attendance(app) {
     const kind = KINDS[b.kind] ? b.kind : 'group';
     const mode = MODES.includes(b.mode) ? b.mode : 'roster';
     const now = Date.now();
-    const id = Number(db.prepare('INSERT INTO att_groups (name, kind, mode, event_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(cleanName(b.name, 'name for the group'), kind, mode, checkEvent(b.event_id), now, now).lastInsertRowid);
+    const id = Number(db.prepare('INSERT INTO att_groups (name, kind, mode, event_id, study_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(cleanName(b.name, 'name for the group'), kind, mode, checkEvent(b.event_id), checkStudy(b.study_id), now, now).lastInsertRowid);
     const names = Array.isArray(b.people) ? b.people : [];
     const add = db.prepare('INSERT INTO att_people (group_id, name, since, created_at) VALUES (?, ?, ?, ?)');
     tx(() => { for (const n of names.slice(0, 500)) { const s = String(n ?? '').trim(); if (s) add.run(id, s.slice(0, 120), b.since ? isoDate(b.since) : '0000-01-01', now); } });
@@ -261,6 +289,7 @@ export default async function attendance(app) {
     if ('kind' in b) { if (!KINDS[b.kind]) throw httpError(400, 'Unknown kind'); f.kind = b.kind; }
     if ('mode' in b) { if (!MODES.includes(b.mode)) throw httpError(400, 'Unknown mode'); f.mode = b.mode; }
     if ('event_id' in b) f.event_id = checkEvent(b.event_id);
+    if ('study_id' in b) f.study_id = checkStudy(b.study_id);
     if ('archived' in b) f.archived = b.archived ? 1 : 0;
     const keys = Object.keys(f);
     if (keys.length) db.prepare(`UPDATE att_groups SET ${keys.map((k) => `${k} = ?`).join(', ')}, updated_at = ? WHERE id = ?`).run(...keys.map((k) => f[k]), Date.now(), g.id);

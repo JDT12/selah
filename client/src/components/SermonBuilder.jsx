@@ -16,6 +16,9 @@ import SlidesEditor from './SlidesEditor.jsx';
 import SermonBoard from './SermonBoard.jsx';
 import FromStudies from './FromStudies.jsx';
 import RichBox from './RichBox.jsx';
+import WhoIsHere from './WhoIsHere.jsx';
+import { useBuilderApi, useBuilderEnv } from '../builderApi.js';
+import { useLiveModel } from '../liveModel.js';
 import OutlineEditor from './OutlineEditor.jsx';
 import { builderKeyAnswers, openBuilderPage, useAutosave } from '../builderPages.js';
 import { afterMove, fitTransition, isStale, moveDivision } from '../sermonBoard.js';
@@ -102,7 +105,13 @@ function PointsPart({ label, hint, f, onChange, placeholder }) {
   const html = boxHtml(f);
   const [state, setState] = useState(() => ({ html, pts: f.rich ? null : pointsOf(html) }));
   // Re-read when the element changed elsewhere (the Arrange board numbered it, a photo's words were added).
-  const pts = state.html === html ? state.pts : (() => { const p = f.rich ? null : pointsOf(html); setState({ html, pts: p }); return p; })();
+  // The lines keep their ids (by place), so the one being typed in stays as it is (14.3: someone else typing).
+  const pts = state.html === html ? state.pts : (() => {
+    const p = f.rich ? null : pointsOf(html);
+    if (p && state.pts) p.lines = p.lines.map((l, i) => (state.pts.lines[i] ? { ...l, id: state.pts.lines[i].id } : l));
+    setState({ html, pts: p });
+    return p;
+  })();
   if (!pts) return <Part label={label} hint={hint} f={f} onChange={onChange} placeholder={placeholder} />;
   const set = (lines) => {
     const out = pointsHtml(lines, pts.inline);
@@ -162,7 +171,9 @@ function Balance({ d }) {
 
 export default function SermonBuilder({ noteId, startAt = null, close }) {
   const dialog = useDialog();
-  const [completeAt, toggleComplete] = useComplete(noteId, (e) => dialog.toast(e.message, 'error'));
+  const api = useBuilderApi(); // 14.3: the owner's Selah, in a builder for a note shared with me (builderApi.js)
+  const { shared } = useBuilderEnv();
+  const [completeAt, toggleComplete] = useComplete(shared ? null : noteId, (e) => dialog.toast(e.message, 'error'));
   const [loaded, setLoaded] = useState(null); // { sermon, note }
   const [model, setModel] = useState(null);
   const [meta, setMeta] = useState(null); // { title, passage, study_id, minutes, worksheet }
@@ -178,8 +189,16 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
   const [reiteration, setReiteration] = useState(false);
   const base = useRef(0);
   useEffect(() => { try { localStorage.setItem('noteapp.sb.view', view); } catch { /* private window */ } }, [view]);
+  // 14.3: live co-editing with everyone else in this builder (liveModel.js). round goes up when the room starts
+  // again (the note was changed outside the builder): the note loads again.
+  const [loadedRound, setLoadedRound] = useState(-1);
+  const { peers, round, saveFields } = useLiveModel({
+    noteId, ready: !!(model && meta), loaded: loadedRound, values: { model, meta }, set: { model: setModel, meta: setMeta },
+    onRemote: () => setHistory([]),
+  });
 
   useEffect(() => {
+    const thisRound = round;
     (async () => {
       try {
         const [sermon, note] = await Promise.all([api.makeSermon(noteId), api.getNote(noteId)]);
@@ -192,15 +211,19 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
         setModel(parsed);
         setSavedHtml(note.html);
         setMeta({ title: note.title ?? '', passage: sermon.passage ?? '', study_id: sermon.study_id ?? null, minutes: sermon.data.minutes ?? '', worksheet: sermon.data.worksheet ?? {} });
-        const first = startAt ?? sermon.data.step ?? 0;
-        setStep(Math.min(STEPS.length - 1, Math.max(0, first)));
+        if (!thisRound) {
+          const first = startAt ?? sermon.data.step ?? 0;
+          setStep(Math.min(STEPS.length - 1, Math.max(0, first)));
+        }
+        setDirty(false);
+        setLoadedRound(thisRound);
       } catch (e) {
         dialog.toast(e.message, 'error');
         close(false);
       }
     })();
     api.studies().then((all) => setSeries(all.filter((s) => s.kind === 'preaching'))).catch(() => {});
-  }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [noteId, round]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const change = (fn) => { setModel((m) => fn(m)); setDirty(true); };
   const setM = (patch) => { setMeta((m) => ({ ...m, ...patch })); setDirty(true); };
@@ -238,7 +261,7 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
   const save = useCallback(async ({ overwrite = false } = {}) => {
     setBusy(true);
     try {
-      const r = await api.writeSermon(noteId, { html, title: meta.title, base_updated_at: base.current, overwrite });
+      const r = await api.writeSermon(noteId, { html, title: meta.title, ...saveFields(base.current), overwrite });
       base.current = r.updated_at;
       await api.updateSermon(loaded.sermon.id, {
         passage: meta.passage, study_id: meta.study_id ?? null,
@@ -258,7 +281,7 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
       dialog.toast(e.message, 'error');
       return false;
     }
-  }, [noteId, html, meta, step, loaded, dialog, model]);
+  }, [noteId, html, meta, step, loaded, dialog, model, saveFields]);
 
   const leave = async () => {
     if (dirty) {
@@ -347,12 +370,12 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
           </label>
         </div>
         <PassageBox passage={meta.passage} />
-        <label className="field">Series
+        {!shared && (<label className="field">Series
           <select className="input" value={meta.study_id ?? ''} onChange={(e) => setM({ study_id: e.target.value ? Number(e.target.value) : null })}>
             <option value="">Not part of a series</option>
             {series.map((x) => <option key={x.id} value={x.id}>{x.title}</option>)}
           </select>
-        </label>
+        </label>)}
         <Part label="Bible text" hint="The passage as you’ll read it in the introduction." f={getPart(intro, 'bibleText')} onChange={(t) => setIntro('bibleText', t)} rows={2} placeholder={meta.passage || 'Matthew 7:1–6'} />
         {!getPart(intro, 'bibleText').text.trim() && meta.passage.trim() && (
           <button type="button" className="btn btn-small" onClick={() => setIntro('bibleText', meta.passage.trim())}>Use {meta.passage.trim()}</button>
@@ -518,11 +541,11 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
             </li>
           ))}
         </ul>
-        <MarkComplete at={completeAt} onToggle={toggleComplete} what="Sermon" open={STEPS.slice(0, 12).filter((x) => !doneOf[x.key]).length} />
-        <div className="gb-forward-btns sb-export">
+        {!shared && <MarkComplete at={completeAt} onToggle={toggleComplete} what="Sermon" open={STEPS.slice(0, 12).filter((x) => !doneOf[x.key]).length} />}
+        {!shared && <div className="gb-forward-btns sb-export">
           <button type="button" className="btn" disabled={busy} onClick={async () => { if (!dirty || (await save())) exportManuscript(dialog, noteId); }}><Icon name="download" size={14} /> Export the manuscript</button>
           <span className="muted">PDF, Word or rich text, as a manuscript or an outline.</span>
-        </div>
+        </div>}
       </>
     ),
   }[s.key];
@@ -535,20 +558,22 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
           <h2>{meta.title.trim() || 'Untitled Sermon'}</h2>
           <span className="muted">{meta.passage || 'No passage yet'}{dirty ? ' · not saved' : ''}</span>
         </div>
+        {peers.length > 0 && <WhoIsHere peers={peers} />}
         <div className="segmented sb-view" role="tablist" aria-label="View">
           <button type="button" role="tab" aria-selected={view === 'steps'} className={view === 'steps' ? 'is-active' : ''} onClick={() => setView('steps')}><Icon name="steps" size={14} /> Steps</button>
           <button type="button" role="tab" aria-selected={view === 'arrange'} className={view === 'arrange' ? 'is-active' : ''} onClick={() => setView('arrange')}><Icon name="grip" size={14} /> Arrange</button>
-          <button type="button" role="tab" aria-selected={view === 'slides'} className={view === 'slides' ? 'is-active' : ''} onClick={() => setView('slides')}><Icon name="monitor" size={14} /> Slides</button>
+          {!shared && <button type="button" role="tab" aria-selected={view === 'slides'} className={view === 'slides' ? 'is-active' : ''} onClick={() => setView('slides')}><Icon name="monitor" size={14} /> Slides</button>}
         </div>
-        <button type="button" className="btn" disabled={busy} onClick={async () => { if (!dirty || (await save())) { close(true); preachNote(dialog, noteId); } }}><Icon name="play" size={14} /> <span className="sb-btn-label">Preach</span></button>
+        {shared && <span className="shared-badge" title={`Shared by ${shared.ownerName}: your changes save to their sermon`}><Icon name="share" size={12} /> {shared.ownerName}’s</span>}
+        {!shared && <button type="button" className="btn" disabled={busy} onClick={async () => { if (!dirty || (await save())) { close(true); preachNote(dialog, noteId); } }}><Icon name="play" size={14} /> <span className="sb-btn-label">Preach</span></button>}
         <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => save()}>{busy ? 'Saving…' : 'Save to note'}</button>
         <button type="button" className="icon-btn" onClick={leave} aria-label="Close the builder"><Icon name="x" /></button>
       </header>
-      {view === 'slides' ? (
+      {view === 'slides' && !shared ? (
         <SlidesEditor noteId={noteId} kind="sermon" source={slideSource}
           onPresent={async () => { if (!dirty || (await save())) { close(true); presentNote(dialog, noteId); } }} />
       ) : view === 'arrange' ? (
-        <SermonBoard model={model} move={move} undo={undo} canUndo={history.length > 0} savedModel={savedModel} sermon={loaded.sermon} noteId={noteId}
+        <SermonBoard model={model} move={move} undo={undo} canUndo={history.length > 0} savedModel={savedModel} sermon={shared ? null : loaded.sermon} noteId={noteId}
           passage={meta.passage} reiteration={reiteration} setTransition={setTransition} dialog={dialog}
           onRefreshReiteration={() => { setConcl('reiteration', reiterationText(model)); setReiteration(false); }}
           onDismissReiteration={() => setReiteration(false)} />
@@ -572,7 +597,7 @@ export default function SermonBuilder({ noteId, startAt = null, close }) {
           <p className="sb-guide">{GUIDE[s.key]}</p>
           <div className="sb-fields">
             {/* Your Bible studies of the passage, while you study it and shape the idea. */}
-            {['passage', 'details', 'questions', 'textIdea', 'bridge'].includes(s.key) && (
+            {!shared && ['passage', 'details', 'questions', 'textIdea', 'bridge'].includes(s.key) && (
               <FromStudies passage={meta.passage} onUse={['textIdea', 'bridge'].includes(s.key) ? (k, v) => setBridge(k, v) : null} />
             )}
             {body}

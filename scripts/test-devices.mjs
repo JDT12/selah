@@ -273,6 +273,42 @@ try {
   check('Preach tools open left of the X, on one row', bar.n > 3 && bar.last <= bar.more && Math.abs(bar.row - bar.y) < 14, JSON.stringify(bar));
   await tablet.context.close();
 
+  section('Live co-editing (14.3)');
+  {
+    // The same note open on the PC, the iPad and the phone: typing shows on the others as it happens.
+    const pc = await open(browser, { width: 1500, height: 950 });
+    const pad = await open(browser, { width: 1180, height: 820, app: 'ios' });
+    const ph = await open(browser, { width: 412, height: 915, app: 'android' });
+    const body = (pg) => pg.locator('.note-body').first();
+    const shows = (pg, words) => until(async () => (await body(pg).innerText()).includes(words), 8000);
+    for (const pg of [pc.page, pad.page, ph.page]) { await go(pg, `#note/${plain.id}`); await body(pg).waitFor({ timeout: 8000 }); }
+    await wait(1200);
+    await body(pc.page).click();
+    await pc.page.keyboard.press('Control+End');
+    await pc.page.keyboard.type(' typed on the PC', { delay: 20 });
+    check('the iPad shows the PC typing', await shows(pad.page, 'typed on the PC'));
+    check('the phone shows it too', await shows(ph.page, 'typed on the PC'));
+    await body(pad.page).click();
+    await pad.page.keyboard.press('Control+End');
+    await pad.page.keyboard.type(' and on the iPad', { delay: 20 });
+    check('the PC shows the iPad typing', await shows(pc.page, 'and on the iPad'));
+    check('the phone edits a plain note, live', await noteEditable(ph.page) === 'true');
+    check('who’s here on the PC shows the other two', await until(async () => (await pc.page.locator('.who-here-dot').count()) === 2));
+    await wait(1500);
+    const saved = await call(pc.page, 'GET', `/api/notes/${plain.id}`);
+    check('the note saved with both', saved.html.includes('typed on the PC') && saved.html.includes('and on the iPad'), saved.html);
+    // A sermon: the phone only reads it, and sees the PC's typing live.
+    for (const pg of [pc.page, ph.page]) { await go(pg, `#note/${sermonNote}`); await body(pg).waitFor({ timeout: 8000 }); }
+    await wait(1200);
+    check('the phone reads a sermon, not edits it', await until(async () => await noteEditable(ph.page) === 'false'));
+    await body(pc.page).locator('p').last().click();
+    await pc.page.keyboard.press('End');
+    await pc.page.keyboard.type(' preached live', { delay: 20 });
+    check('the phone shows the sermon typing live', await shows(ph.page, 'preached live'));
+    await shot(ph.page, 'phone-live-sermon');
+    for (const c of [pc, pad, ph]) await c.context.close();
+  }
+
   section('Phone remote');
   // The tablet preaches; the phone app is the remote. Haptics are faked so each buzz is counted.
   const pad = await open(browser, { width: 1180, height: 820, app: 'ios' });
@@ -565,6 +601,20 @@ try {
     return d.dates.some((x) => x.present?.length === 1);
   }, 5000));
   await padN.c.close();
+  // 14.3: a class taught from a series, not on the calendar: every lesson in the series offers its attendance.
+  const padS = await appWith(1180, 820, 'ios');
+  const tp3 = padS.pg;
+  await closeDialogs(tp3);
+  const romans = await call(tp3, 'POST', '/api/studies', { kind: 'teaching', title: 'Romans' });
+  const wk = (await call(tp3, 'POST', `/api/studies/${romans.id}/items`, { kind: 'session', title: 'Week 1' })).ids[0];
+  const seriesLesson = (await call(tp3, 'POST', `/api/study-items/${wk}/note`, {})).id;
+  check('a lesson in a series no class teaches offers no attendance', !(await call(tp3, 'GET', `/api/notes/${seriesLesson}/attendance`)).group);
+  await call(tp3, 'POST', '/api/attendance/groups', { name: 'Romans class', kind: 'class', study_id: romans.id, people: ['Ann Lee'] });
+  await go(tp3, `#note/${seriesLesson}`);
+  await tp3.locator('.work-go').click();
+  await tp3.locator('.preach').waitFor({ timeout: 8000 });
+  check('Teach offers the series class’s attendance', await until(async () => (await tp3.getByRole('button', { name: 'Attendance', exact: true }).getAttribute('title')) === 'Take attendance: Romans class', 8000));
+  await padS.c.close();
 
   section('Daily Walk routine');
   const rc = await browser.newContext({ viewport: { width: 1180, height: 900 } });

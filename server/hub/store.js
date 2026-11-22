@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS hides (
 );`);
 // 14.1: "Show me to others" (on unless the person turns it off): everyone shown, with sharing on, is everyone's contact.
 if (!db.prepare("SELECT 1 FROM pragma_table_info('tenants') WHERE name = 'listed'").get()) db.exec('ALTER TABLE tenants ADD COLUMN listed INTEGER NOT NULL DEFAULT 1');
+// 14.3: what each person may do with a share: read, edit (live co-editing), or full (edit, and add and delete notes).
+if (!db.prepare("SELECT 1 FROM pragma_table_info('share_people') WHERE name = 'role'").get()) db.exec("ALTER TABLE share_people ADD COLUMN role TEXT NOT NULL DEFAULT 'read'");
 
 export const json = (s, fallback) => { try { return JSON.parse(s ?? 'null') ?? fallback; } catch { return fallback; } };
 export const clip = (v, n) => String(v ?? '').trim().slice(0, n);
@@ -167,6 +169,8 @@ export const hides = (slug, owner) => !!db.prepare('SELECT 1 FROM hides WHERE sl
 export const shareRow = (id) => db.prepare('SELECT * FROM shares WHERE id = ?').get(String(id));
 export const peopleOf = (id) => db.prepare('SELECT slug FROM share_people WHERE share_id = ? ORDER BY slug').all(id).map((r) => r.slug);
 export const sharesWith = (slug, id) => !!db.prepare('SELECT 1 FROM share_people WHERE share_id = ? AND slug = ?').get(id, slug);
+export const ROLES = ['read', 'edit', 'full'];
+export const roleOf = (slug, id) => db.prepare('SELECT role FROM share_people WHERE share_id = ? AND slug = ?').get(id, slug)?.role ?? null;
 export const shareFiles = (id) => path.join(FILES, id);
 
 /** Removes a share, its notes, comments and files. */

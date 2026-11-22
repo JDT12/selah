@@ -1,4 +1,5 @@
 import { db, tx } from './db.js';
+import { liveSave, liveSaved } from './coedit.js';
 import { escapeHtml, htmlToText } from './html.js';
 import { snapshot } from './links.js';
 import { catchUp, IGNORED } from './scripture.js';
@@ -436,7 +437,9 @@ export default async function bibleStudyRoutes(app) {
     const b = req.body ?? {};
     if (typeof b.html !== 'string') throw httpError(400, 'Nothing to write');
     const now = db.prepare('SELECT title, html, updated_at FROM notes WHERE id = ?').get(s.note_id);
-    if (typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
+    // 14.3: a save from a builder co-editing the note live (coedit.js) is never a conflict.
+    const live = b.live != null && liveSave(s.note_id, req.headers['x-client-id'], b.live, 'builder');
+    if (!live && typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
       reply.code(409);
       return { error: 'The study note changed while the builder was open', conflict: true, note: now };
     }
@@ -446,6 +449,7 @@ export default async function bibleStudyRoutes(app) {
       db.prepare('UPDATE notes SET title = ?, html = ?, text = ?, updated_at = ? WHERE id = ?').run(title, b.html, htmlToText(b.html), Date.now(), s.note_id);
       db.prepare('UPDATE bible_studies SET updated_at = ? WHERE id = ?').run(Date.now(), s.id);
       log(s.note_id, 'study');
+      if (live) liveSaved(s.note_id, 'builder');
       return db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(s.note_id);
     });
   });

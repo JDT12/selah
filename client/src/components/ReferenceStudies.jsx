@@ -9,6 +9,8 @@ import HandwritingDialog from './HandwritingDialog.jsx';
 import { Area, TextPane } from './StudyBuilder.jsx';
 import { appendText, boxHtml, words } from '../sermon.js';
 import RichBox from './RichBox.jsx';
+import WhoIsHere from './WhoIsHere.jsx';
+import { useLiveModel } from '../liveModel.js';
 import { builderKeyAnswers, openBuilderPage, useAutosave } from '../builderPages.js';
 import { useStoredState } from '../useStoredState.js';
 import { completeLayout, emptyLayout, firstLine, getField, layoutHtml, parseLayout, setField } from '../studyLayout.js';
@@ -89,8 +91,15 @@ function LayoutBuilder({ noteId, close, cfg }) {
   const [showText, setShowText] = useStoredState('noteapp.gb.text', true);
   const base = useRef(0);
   const steps = cfg.steps;
+  // 14.3: live co-editing with everyone else in this builder (liveModel.js); the note loads again when the room
+  // starts again.
+  const [loadedRound, setLoadedRound] = useState(-1);
+  const { peers, round, saveFields } = useLiveModel({
+    noteId, ready: !!(model && meta), loaded: loadedRound, values: { model, meta }, set: { model: setModel, meta: setMeta },
+  });
 
   useEffect(() => {
+    const thisRound = round;
     (async () => {
       try {
         const [s, note] = await Promise.all([api.makeBibleStudy(noteId), api.getNote(noteId)]);
@@ -98,13 +107,15 @@ function LayoutBuilder({ noteId, close, cfg }) {
         setStudy(s);
         setModel(completeLayout(parseLayout(note.html, steps), steps));
         setMeta(cfg.init(s, note));
-        setStep(Math.min(cfg.nav.length - 1, Math.max(0, s.data.step ?? 0)));
+        if (!thisRound) setStep(Math.min(cfg.nav.length - 1, Math.max(0, s.data.step ?? 0)));
+        setDirty(false);
+        setLoadedRound(thisRound);
       } catch (e) {
         dialog.toast(e.message, 'error');
         close(false);
       }
     })();
-  }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [noteId, round]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k, text) => { setModel((m) => setField(m, steps, k, text)); setDirty(true); };
   const setM = (patch) => { setMeta((m) => ({ ...m, ...(typeof patch === 'function' ? patch(m) : patch) })); setDirty(true); };
@@ -116,7 +127,7 @@ function LayoutBuilder({ noteId, close, cfg }) {
   const save = useCallback(async ({ overwrite = false } = {}) => {
     setBusy(true);
     try {
-      const r = await api.writeBibleStudy(noteId, { html, title: meta.title, base_updated_at: base.current, overwrite });
+      const r = await api.writeBibleStudy(noteId, { html, title: meta.title, ...saveFields(base.current), overwrite });
       base.current = r.updated_at;
       const s = await api.updateBibleStudy(study.id, { passage: meta.passage, data: { ...cfg.data(ctx), step, keeper: ctx.text('keeper') } });
       setStudy(s);
@@ -134,7 +145,7 @@ function LayoutBuilder({ noteId, close, cfg }) {
       dialog.toast(e.message, 'error');
       return false;
     }
-  }, [noteId, html, meta, step, study, model, dialog]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [noteId, html, meta, step, study, model, dialog, saveFields]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const leave = async () => {
     if (dirty) {
@@ -179,6 +190,7 @@ function LayoutBuilder({ noteId, close, cfg }) {
           <h2>{meta.title.trim() || `Untitled ${cfg.noun}`}</h2>
           <span className="muted">{cfg.noun}{cfg.subtitle(meta) ? ` · ${cfg.subtitle(meta)}` : ''}{dirty ? ' · not saved' : ''}</span>
         </div>
+        {peers.length > 0 && <WhoIsHere peers={peers} />}
         {passage && !showText && <button type="button" className="btn" onClick={() => setShowText(true)}><Icon name="bible" size={14} /> <span className="sb-btn-label">Show the passage</span></button>}
         <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => save()}>{busy ? 'Saving…' : 'Save to note'}</button>
         <button type="button" className="icon-btn" onClick={leave} aria-label={`Close the ${cfg.noun.toLowerCase()} builder`}><Icon name="x" /></button>

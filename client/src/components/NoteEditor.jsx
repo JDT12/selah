@@ -5,6 +5,9 @@ import { DragHandle } from '@tiptap/extension-drag-handle-react';
 import { api, fileUrl, formatSize } from '../api.js';
 import PdfReader from './PdfReader.jsx';
 import { buildExtensions } from '../editor/extensions.js';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { joinCoedit, setYText } from '../coedit.js';
+import WhoIsHere from './WhoIsHere.jsx';
 import Toolbar from '../editor/Toolbar.jsx';
 import Icon from './Icon.jsx';
 import { openExport } from './ExportDialog.jsx';
@@ -72,17 +75,38 @@ const LIST_DRAG = {
 export default function NoteEditor(props) {
   const [note, setNote] = useState(null);
   const [error, setError] = useState(null);
+  // 14.3: the live co-editing session (coedit.js), or false when the note opens without one (as before 14.3).
+  const [live, setLive] = useState(null);
+  // Bumped when the room starts again (the note changed from outside it): the note loads again, in a new session.
+  const [round, setRound] = useState(0);
   useEffect(() => {
     let alive = true;
+    let session = null;
+    let off = null;
+    setLive(null);
     api.getNote(props.id)
-      .then((n) => alive && setNote(n))
+      .then(async (n) => {
+        if (!alive) return;
+        session = n.deleted_at ? null : await joinCoedit(n.id);
+        if (!alive) { session?.destroy(); return; }
+        if (session) off = session.on('reset', () => setRound((r) => r + 1));
+        // The note again: someone may have saved it while this window was joining.
+        const fresh = session ? await api.getNote(props.id).catch(() => n) : n;
+        if (!alive) return;
+        setNote(fresh);
+        setLive(session || false);
+      })
       .catch((e) => alive && setError(e.message));
-    return () => { alive = false; };
-  }, [props.id]);
+    return () => {
+      alive = false;
+      off?.();
+      session?.destroy();
+    };
+  }, [props.id, round]);
 
   if (error) return <div className="editor-empty">{error}</div>;
-  if (!note) return <div className="editor-empty" />;
-  return <LoadedNote note={note} {...props} />;
+  if (!note || live === null) return <div className="editor-empty" />;
+  return <LoadedNote key={round} note={note} live={live || null} {...props} />;
 }
 
 /** 10.1: the one notebook you file into is My notes (builders keep theirs out of sight; the Inbox is for captures). */
@@ -92,7 +116,7 @@ export function notebookOptions(tree) {
 }
 
 function LoadedNote({
-  note, tree, listNote, noteActions, onOpenScripture, onChanged, onSaved, onTrash, onRestore, onDeleteForever, onBack, fullScreen, onFullScreen,
+  note, live, tree, listNote, noteActions, onOpenScripture, onChanged, onSaved, onTrash, onRestore, onDeleteForever, onBack, fullScreen, onFullScreen,
   onReload, scrollTo, peek,
 }) {
   const dialog = useDialog();
@@ -160,10 +184,14 @@ function LoadedNote({
     pending.current = {};
     setStatus('saving');
     const content = 'html' in patch || 'title' in patch;
+    // Live, the text as it is now, with the others' typing that came in since this window's own.
+    if (live && 'html' in patch && editorRef.current && !editorRef.current.isDestroyed) patch.html = editorRef.current.getHTML();
+    if (live && 'title' in patch) patch.title = live.title.toString();
     try {
       if (keepalive) { await api.updateNote(note.id, patch, true); return; }
       saving.current = true;
-      const r = await api.updateNote(note.id, content ? { ...patch, base_updated_at: known.current } : patch).finally(() => { saving.current = false; });
+      const body = !content ? patch : live ? { ...patch, live: live.epoch } : { ...patch, base_updated_at: known.current };
+      const r = await api.updateNote(note.id, body).finally(() => { saving.current = false; });
       if (r.updated_at) known.current = r.updated_at;
       if (!Object.keys(pending.current).length) setStatus('saved');
       onSaved(note.id, { ...patch, updated_at: r.updated_at });
@@ -177,7 +205,7 @@ function LoadedNote({
       setStatus('error');
       dialog.toast(`Save failed: ${e.message}`, 'error');
     }
-  }, [note.id, onSaved, dialog]);
+  }, [note.id, onSaved, dialog, live]);
 
   const queue = useCallback((patch, delay = 700) => {
     Object.assign(pending.current, patch);
@@ -235,19 +263,43 @@ function LoadedNote({
     }
   }, [uploadFiles, dialog]);
 
-  const extensions = useMemo(() => buildExtensions({ onFiles: (f, p) => uploadFiles(f, p) }), [uploadFiles]);
+  const extensions = useMemo(() => buildExtensions({ onFiles: (f, p) => uploadFiles(f, p), live }), [uploadFiles, live]);
 
   const editor = useEditor({
     extensions,
-    content: note.html || '<p></p>',
+    // Live, the content is the shared document's (or this window builds it from the HTML, below).
+    ...(live ? {} : { content: note.html || '<p></p>' }),
     editable: !viewOnly,
     shouldRerenderOnTransaction: false,
     editorProps: { attributes: { class: 'note-body', spellcheck: 'true' } },
-    onUpdate: ({ editor: e }) => {
-      queue({ html: e.getHTML() });
+    onUpdate: ({ editor: e, transaction }) => {
+      // Live, the others' typing arrives as changes too: each window saves only after its own.
+      if (!(live && transaction?.getMeta(ySyncPluginKey)?.isChangeOrigin)) queue({ html: e.getHTML() });
       onChanged(note.id, { snippet: e.getText({ blockSeparator: ' ' }).slice(0, 220) });
     },
   }, [extensions]);
+
+  // ---- live co-editing (14.3) ----
+  // The first window in the note builds the shared document from its HTML; the title is shared too.
+  useEffect(() => {
+    if (!live || !editor || editor.isDestroyed) return undefined;
+    if (live.seed) {
+      const { html, title: t } = live.seed;
+      editor.commands.setContent(html || '<p></p>', { emitUpdate: false });
+      live.doc.transact(() => {
+        if (live.title.length) live.title.delete(0, live.title.length);
+        live.title.insert(0, t ?? '');
+      });
+      live.seedDone();
+    } else if (live.title.toString() !== titleRef.current?.value) {
+      setTitle(live.title.toString());
+    }
+    const onTitle = (ev, tr) => { if (!tr.local) setTitle(live.title.toString()); };
+    live.title.observe(onTitle);
+    return () => live.title.unobserve(onTitle);
+  }, [live, editor]);
+  const [peers, setPeers] = useState(() => live?.peers() ?? []);
+  useEffect(() => (live ? live.on('peers', setPeers) : undefined), [live]);
 
   // ---- live updates: this note changed in another window or device ----
   // With nothing unsaved here, the new text replaces it in place (the cursor and scroll position stay); with
@@ -280,7 +332,7 @@ function LoadedNote({
       known.current = n.updated_at; // the same text (this window's own save, or nothing new)
       return;
     }
-    if (n.deleted_at || !(n.updated_at > known.current)) {
+    if (live || n.deleted_at || !(n.updated_at > known.current)) {
       // Not newer text, but tags or files may have changed (and aren't being edited here).
       if (!('tags' in pending.current) && n.tags) setTags(n.tags);
       if (n.attachments) setAttachments(n.attachments);
@@ -293,7 +345,7 @@ function LoadedNote({
     } else {
       applyNote(n, 'This note was updated in another window; showing the latest.');
     }
-  }, [note.id, applyNote]);
+  }, [note.id, applyNote, live]);
 
   // Through a ref, so the listener isn't set up again (dropping a check it had scheduled) on every render.
   const checkRemoteRef = useRef(checkRemote);
@@ -652,6 +704,7 @@ function LoadedNote({
   // ---- metadata ----
   const changeTitle = (v) => {
     setTitle(v);
+    if (live) setYText(live.title, v);
     queue({ title: v });
     onChanged(note.id, { title: v });
   };
@@ -1053,6 +1106,7 @@ function LoadedNote({
             <Icon name={locked ? 'lock' : 'unlock'} size={15} />{locked && <span>Read-only</span>}
           </button>
         )}
+        {peers.length > 0 && <WhoIsHere peers={peers} />}
         {!readOnly && !deviceLocked && <span className={`save-status is-${status}`}>{statusText}</span>}
         {writingStudy && (
           <button className={`icon-btn ${showSources ? 'is-on' : ''}`} onClick={toggleSources} aria-pressed={showSources}
@@ -1342,3 +1396,4 @@ export function WorkMeta({ parts, type, passage, words, onPassage }) {
     </div>
   );
 }
+

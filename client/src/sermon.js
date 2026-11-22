@@ -26,8 +26,10 @@ const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 const norm = (t) => String(t ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
 const doc = (html) => new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html').body;
 let seq = 0;
+// This window's own part of every id: two people adding a division at once in a live builder (14.3) get different ones.
+const WINDOW = Math.random().toString(36).slice(2, 8);
 /** An id for a division or part while the builder is open (so the board can follow it as it moves). */
-export const uid = () => `u${++seq}`;
+export const uid = () => `u${WINDOW}${++seq}`;
 const outer = (nodes) => nodes.map((n) => (n.nodeType === 1 ? n.outerHTML : n.nodeType === 3 ? esc(n.textContent) : '')).join('');
 
 /**

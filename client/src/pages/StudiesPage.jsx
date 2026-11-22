@@ -299,6 +299,7 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
             <span className="study-kind-chip"><Icon name={kind.icon} size={13} /> {kind.label}</span>
             {s.status !== 'active' && <span className="study-kind-chip">{s.status === 'done' ? 'Finished' : 'Archived'}</span>}
             {s.notebook && <span> · notes in {s.notebook.name}</span>}
+            {(s.kind === 'teaching' || s.kind === 'preaching') && <SeriesClass study={s} />}
           </p>
         </div>
         <div className="page-actions">
@@ -469,5 +470,32 @@ function ClassFeed({ s, changed }) {
         <button type="button" className="btn btn-small" disabled={!url.trim() || busy} onClick={sync}>{busy ? 'Checking…' : 'Save and check now'}</button>
       </div>
     </section>
+  );
+}
+
+/**
+ * 14.3: the attendance group (a class, a service) taught from this series. Every lesson or sermon in it then has the
+ * group's Attendance button in Preach and Teach. Picked here or in the group's settings (Plan → Attendance).
+ */
+function SeriesClass({ study }) {
+  const dialog = useDialog();
+  const [groups, setGroups] = useState(null);
+  const load = useCallback(() => api.attendance().then((r) => setGroups(r.groups.filter((g) => !g.archived && g.kind !== 'group'))).catch(() => setGroups([])), []);
+  useEffect(() => { load(); }, [load]);
+  if (!groups) return null;
+  const linked = groups.filter((g) => g.study_id === study.id);
+  const set = async (g, on) => {
+    try { await api.updateAttendanceGroup(g.id, { study_id: on ? study.id : null }); load(); } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+  const items = [
+    ...groups.map((g) => ({ label: `${g.study_id === study.id ? '✓ ' : ''}${g.name}`, onClick: () => set(g, g.study_id !== study.id) })),
+    !groups.length && { label: 'No classes yet: add one on Plan → Attendance', disabled: true },
+  ];
+  return (
+    <Menu className="series-class" trigger={({ toggle }) => (
+      <button type="button" className="study-kind-chip series-class-btn" onClick={toggle} title="Its lessons get this group’s Attendance button in Preach and Teach">
+        <Icon name="users" size={13} /> {linked.length ? `Attendance: ${linked.map((g) => g.name).join(', ')}` : 'Take attendance for a class…'}
+      </button>
+    )} items={items} />
   );
 }

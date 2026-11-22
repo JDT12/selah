@@ -5,6 +5,8 @@ import { dropPoint } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import Collaboration from '@tiptap/extension-collaboration';
+import CollaborationCaret from '@tiptap/extension-collaboration-caret';
 import { TaskItem, TaskList } from '@tiptap/extension-list';
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details';
 import { Table, TableCell, TableHeader, TableKit, TableView } from '@tiptap/extension-table';
@@ -733,9 +735,66 @@ const MarkedTable = Table.extend({
   },
 });
 
-export function buildExtensions({ onFiles }) {
+/**
+ * 14.3: a picture's address as this page shows it. A note shared with me, open to edit live, has the owner's own
+ * addresses (/api/files/12) in it; editor.storage.noteApp.imageSrc maps them to the share's (only on screen: the
+ * note keeps the owner's).
+ */
+const MappedImage = Image.extend({
+  addNodeView() {
+    const make = this.parent?.();
+    if (!make) return null;
+    return (props) => {
+      const map = (src) => props.editor.storage.noteApp?.imageSrc?.(src) ?? src;
+      const view = make({ ...props, HTMLAttributes: { ...props.HTMLAttributes, src: map(props.HTMLAttributes.src) } });
+      const img = () => (view.dom?.tagName === 'IMG' ? view.dom : view.dom?.querySelector?.('img'));
+      const fix = () => {
+        const el = img();
+        const src = el?.getAttribute('src');
+        const to = src && map(src);
+        if (el && to && to !== src) el.setAttribute('src', to);
+      };
+      fix();
+      if (typeof view.update === 'function') {
+        const update = view.update.bind(view);
+        view.update = (...args) => { const r = update(...args); fix(); return r; };
+      }
+      return view;
+    };
+  },
+});
+
+/** A cursor with the name of whoever it is (14.3), in their color. */
+function caretFor(user) {
+  const caret = document.createElement('span');
+  caret.className = 'collab-caret';
+  caret.style.borderColor = user.color;
+  const label = document.createElement('span');
+  label.className = 'collab-caret-label';
+  label.style.backgroundColor = user.color;
+  label.textContent = [user.name, user.device].filter(Boolean).join(' · ') || 'Someone';
+  caret.append(label);
+  return caret;
+}
+
+/**
+ * The note editor's extensions. With `live` (a co-editing session, coedit.js, 14.3) the document is the session's
+ * shared one, undo is Yjs's (only this window's own typing), and the others' cursors show with their names.
+ */
+export function buildExtensions({ onFiles, live = null }) {
+  const collab = live ? [
+    Collaboration.configure({ document: live.doc, field: 'default' }),
+    CollaborationCaret.configure({
+      provider: live,
+      user: live.user,
+      render: caretFor,
+      selectionRender: (user) => ({ nodeName: 'span', class: 'collab-selection', style: `background-color: ${user.color}33` }),
+    }),
+  ] : [];
   return [
+    ...collab,
     StarterKit.configure({
+      ...(live ? { undoRedo: false } : {}),
       codeBlock: false,
       heading: { levels: [1, 2, 3, 4] },
       link: {
@@ -767,7 +826,7 @@ export function buildExtensions({ onFiles }) {
     MarkedTable,
     ColoredCell,
     ColoredHeader,
-    Image.configure({ resize: { enabled: true, alwaysPreserveAspectRatio: true, minWidth: 40, minHeight: 40 } }),
+    MappedImage.configure({ resize: { enabled: true, alwaysPreserveAspectRatio: true, minWidth: 40, minHeight: 40 } }),
     ColorHighlight,
     TextColor,
     ListMove,

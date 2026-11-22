@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { db, tx, unlinkStorage, getSetting, setSetting } from './db.js';
 import { config } from './config.js';
+import { lastEditor, liveSave, liveSaved } from './coedit.js';
 import { escapeHtml, htmlToText } from './html.js';
 import { setNoteTags, noteTags, TAG_COLORS, cleanTagName, mergeTag, dropUnusedTags } from './tags.js';
 import { importEnex } from './enex.js';
@@ -12,7 +13,7 @@ import * as auth from './auth.js';
 import { today } from './recurrence.js';
 import { toM4a } from './media.js';
 import { dropThumbs } from './attachments.js';
-import { renameLinks, snapshot } from './links.js';
+import { renameLinks, snapshot, turnSnapshot } from './links.js';
 import { HEIC_DIR, heicJpeg, isHeic } from './heic.js';
 import { inboxId } from './capture.js';
 import { attachCopies, copyFiles, pointAt } from './notetools.js';
@@ -538,7 +539,10 @@ code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;wor
     const editsContent = typeof b.title === 'string' || typeof b.html === 'string';
     // base_updated_at is the version the editor started from. If the note has changed since (another window or
     // device saved it), the save is refused with the newer note, unless the editor chose to overwrite it.
-    if (editsContent && typeof b.base_updated_at === 'number' && !b.overwrite) {
+    // 14.3: a save from a window co-editing the note live (coedit.js) is never a conflict: its text already has
+    // everyone's typing in it.
+    const live = editsContent && b.live != null && liveSave(id, req.headers['x-client-id'], b.live);
+    if (editsContent && !live && typeof b.base_updated_at === 'number' && !b.overwrite) {
       const now = db.prepare('SELECT title, html, updated_at FROM notes WHERE id = ?').get(id);
       if (now && now.updated_at > b.base_updated_at) {
         reply.code(409);
@@ -550,7 +554,10 @@ code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;wor
       if (!before) throw httpError(404, 'Note not found');
       // The note as it was before this editing session goes into its version history; when one window's text
       // replaces another's (overwrite), the replaced text is always kept.
-      if (b.overwrite && editsContent && !before.deleted_at) snapshot(id, { reason: 'Replaced from another window', force: true });
+      // 14.3: after someone else's turn in a shared note, the note as they left it is kept, with their name.
+      const by = editsContent ? lastEditor.get(id) : null;
+      if (by && !before.deleted_at) { turnSnapshot(id, by); lastEditor.delete(id); }
+      else if (b.overwrite && editsContent && !before.deleted_at) snapshot(id, { reason: 'Replaced from another window', force: true });
       else if (editsContent && !before.deleted_at) snapshot(id);
       const sets = [];
       const args = [];
@@ -570,6 +577,7 @@ code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;wor
       if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`).run(...args, id);
       if (Array.isArray(b.tags)) setNoteTags(id, b.tags);
       if (typeof b.title === 'string') renameLinks(id, before.title, b.title.slice(0, 500));
+      if (live) liveSaved(id);
       return db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(id);
     });
   });

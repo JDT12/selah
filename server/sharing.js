@@ -5,7 +5,11 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { db, tx, getSetting, setSetting } from './db.js';
 import { config } from './config.js';
-import { broadcast } from './events.js';
+import { broadcast, sendTo } from './events.js';
+import { dropRemote, joinRoom, lastEditor, leaveRoom, liveSaved, remoteCanSave, setRemoteSender, syncRoom } from './coedit.js';
+import { deviceName } from './auth.js';
+import { htmlToText, sanitizeNoteHtml } from './html.js';
+import { snapshot, turnSnapshot } from './links.js';
 import { methodOfNote } from './methods.js';
 import { itemsOf } from './studies.js';
 import { importPackage } from './notepack.js';
@@ -74,6 +78,11 @@ CREATE TABLE IF NOT EXISTS share_comments (id TEXT PRIMARY KEY, share_id TEXT NO
   quote TEXT NOT NULL DEFAULT '', prefix TEXT NOT NULL DEFAULT '', suffix TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
   resolved_at INTEGER, seen_at INTEGER);
 CREATE TABLE IF NOT EXISTS share_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, msg TEXT NOT NULL);`);
+// 14.3: what each person may do: read, edit (live co-editing) or full (edit, and add and delete notes).
+if (config.mode !== 'admin' && !db.prepare("SELECT 1 FROM pragma_table_info('share_people') WHERE name = 'role'").get()) {
+  db.exec("ALTER TABLE share_people ADD COLUMN role TEXT NOT NULL DEFAULT 'read'");
+}
+const ROLES = ['read', 'edit', 'full'];
 
 // ---------- talking to the hub ----------
 
@@ -157,13 +166,14 @@ function workOf(noteId) {
 }
 
 const people = (id) => db.prepare('SELECT slug FROM share_people WHERE share_id = ? ORDER BY slug').all(id).map((r) => r.slug);
+const peopleRoles = (id) => db.prepare('SELECT slug, role FROM share_people WHERE share_id = ? ORDER BY slug').all(id);
 const shareOf = (id) => db.prepare('SELECT * FROM shares_out WHERE id = ?').get(id);
 
 /** What the snapshot depends on: when it differs from the last one the hub took, a new snapshot goes. */
 function signature(share, notes) {
   const title = refTitle(share.kind, share.ref_id) ?? share.title;
   const study = share.kind === 'study' ? db.prepare('SELECT updated_at FROM studies WHERE id = ?').get(share.ref_id)?.updated_at : null;
-  return crypto.createHash('sha1').update(JSON.stringify([title, study, share.allow_copy, share.allow_comments, people(share.id),
+  return crypto.createHash('sha1').update(JSON.stringify([title, study, share.allow_copy, share.allow_comments, peopleRoles(share.id),
     notes.map((n) => [n.id, n.updated_at, n.grp])])).digest('hex');
 }
 
@@ -192,7 +202,7 @@ function sendSnapshot(share, notes = notesOf(share)) {
       project = s ? { kind: s.kind, description: clip(s.description, 2000) } : null;
     }
     const r = await hub('PUT', `/v1/shares/${share.id}`, {
-      kind: share.kind, title, project, allowCopy: !!share.allow_copy, allowComments: !!share.allow_comments, people: people(share.id), notes: list,
+      kind: share.kind, title, project, allowCopy: !!share.allow_copy, allowComments: !!share.allow_comments, people: peopleRoles(share.id), notes: list,
     }, { timeout: 120_000 });
     // The hub decides who it's really shared with (contacts, sharing on): this record follows.
     tx(() => {
@@ -206,6 +216,7 @@ function sendSnapshot(share, notes = notesOf(share)) {
 /** Stops sharing: the hub forgets it (or will, if it isn't answering: the stop waits in pending_stops). */
 async function stopShare(id) {
   db.prepare('DELETE FROM shares_out WHERE id = ?').run(id);
+  dropRemote(`hub:${id}:`);
   try {
     await hub('DELETE', `/v1/shares/${id}`);
   } catch (e) {
@@ -239,6 +250,199 @@ async function checkShares() {
   }
 }
 
+// ---------- live co-editing in shares (14.3) ----------
+// The live room of a note I share is here (coedit.js); people on other Selahs are in it as
+// 'hub:<share>:<their Selah>:<their window>'. What the room sends them goes through the hub, a few at a time.
+
+const outLive = new Map(); // share id → [{ slug, client, msg }]
+let liveTimer = null;
+function flushLive() {
+  liveTimer = null;
+  for (const [shareId, messages] of outLive) {
+    outLive.delete(shareId);
+    hub('POST', `/v1/shares/${shareId}/live/send`, { messages }).catch(() => {});
+  }
+}
+setRemoteSender((member, msg) => {
+  const [, shareId, slug, client] = member.split(':');
+  if (!outLive.has(shareId)) outLive.set(shareId, []);
+  outLive.get(shareId).push({ slug, client, msg });
+  if (!liveTimer) liveTimer = setTimeout(flushLive, 15);
+});
+
+const LIVE_STALE = 15_000;
+async function answerLive(e) {
+  if (e.at && Date.now() - e.at > LIVE_STALE) return null; // asked while this Selah was away: nobody's waiting any more
+  const reply = (body) => (e.op === 'leave' ? null : hub('POST', `/v1/shares/${e.shareId}/live/reply`, { reqId: e.reqId, ...body }).catch(() => {}));
+  try {
+    const share = shareOf(String(e.shareId));
+    if (!share || !sharingOn()) throw httpError(404, 'This isn’t shared any more.');
+    const member = `hub:${share.id}:${e.from}:${e.client}`;
+    const role = db.prepare('SELECT role FROM share_people WHERE share_id = ? AND slug = ?').get(share.id, String(e.from))?.role;
+    if (!role) throw httpError(404, 'This isn’t shared with you any more.');
+    const canWrite = role !== 'read';
+    const key = Number(e.key);
+    if (e.op !== 'add' && !notesOf(share).some((n) => n.id === key)) throw httpError(404, 'That note isn’t in the share any more.');
+    const body = { ...(e.body ?? {}), kind: e.body?.kind === 'builder' ? 'builder' : 'note' };
+    const who = { name: clip(e.name, 80) || String(e.from), device: clip(e.device, 80) };
+    if (e.op === 'join') return reply({ body: joinRoom({ noteId: key, member, body, who, canWrite }) });
+    if (e.op === 'sync') {
+      if (!canWrite && body.update) throw httpError(403, 'You can read this, not change it.');
+      return reply({ body: syncRoom({ noteId: key, member, body }) });
+    }
+    if (e.op === 'leave') { leaveRoom({ noteId: key, member, body }); return null; }
+    if (!canWrite) throw httpError(403, 'You can read this, not change it.');
+    if (e.op === 'save') return reply({ body: saveRemote(share, key, member, who.name, body) });
+    if (e.op === 'builder') return reply({ body: await builderCall(share, key, member, who.name, String(body.method ?? ''), body.args) });
+    if (e.op === 'add' || e.op === 'delete') {
+      if (role !== 'full') throw httpError(403, 'Only the owner can add or take out notes here.');
+      const r = e.op === 'add' ? addRemote(share, body, who.name) : deleteRemote(share, key);
+      sendSnapshot(shareOf(share.id)).catch(() => {});
+      return reply({ body: r });
+    }
+    throw httpError(400, 'Bad request');
+  } catch (err) {
+    return reply({ error: err.message, status: err.statusCode ?? 500 });
+  }
+}
+
+const SHARED_FILE = (shareId) => new RegExp(`/api/shared/${shareId}/files/(\\d+)`, 'g');
+
+/**
+ * Someone editing a note I share saves it: their editor's HTML, cleaned (it comes from another Selah), with images
+ * pointing at my files again. Version history keeps the note as it was before each person's turn, named.
+ */
+function saveRemote(share, noteId, member, name, b) {
+  if (!remoteCanSave(noteId, member, b.live)) throw httpError(409, 'Open the note again to keep editing.');
+  const html = typeof b.html === 'string' ? sanitizeNoteHtml(b.html).replace(SHARED_FILE(share.id), '/api/files/$1') : null;
+  const title = typeof b.title === 'string' ? clip(b.title, 500) : null;
+  if (html == null && title == null) throw httpError(400, 'Nothing to save');
+  return tx(() => {
+    const before = db.prepare('SELECT title, html, deleted_at FROM notes WHERE id = ?').get(noteId);
+    if (!before || before.deleted_at) throw httpError(404, 'That note isn’t in the share any more.');
+    const by = lastEditor.get(noteId);
+    if (by !== name) turnSnapshot(noteId, by ?? null, name);
+    else snapshot(noteId);
+    const sets = [];
+    const args = [];
+    if (html != null) { sets.push('html = ?', 'text = ?'); args.push(html, htmlToText(html)); }
+    if (title != null) { sets.push('title = ?'); args.push(title); }
+    sets.push('updated_at = ?');
+    args.push(Date.now());
+    db.prepare(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`).run(...args, noteId);
+    lastEditor.set(noteId, name);
+    liveSaved(noteId);
+    broadcast({ url: `/api/notes/${noteId}`, method: 'PATCH', note: noteId, client: null });
+    return db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(noteId);
+  });
+}
+
+/** Full control: a new note in a notebook or project I share. */
+function addRemote(share, b, name) {
+  if (share.kind === 'note') throw httpError(400, 'Notes can only be added to a shared notebook or project.');
+  const title = clip(b.title, 500) || 'Untitled';
+  const now = Date.now();
+  return tx(() => {
+    let notebook = share.kind === 'notebook' ? share.ref_id : null;
+    if (share.kind === 'study') {
+      notebook = db.prepare('SELECT notebook_id FROM studies WHERE id = ?').get(share.ref_id)?.notebook_id
+        ?? db.prepare('SELECT n.notebook_id FROM notes n JOIN study_notes sn ON sn.note_id = n.id WHERE sn.study_id = ? LIMIT 1').get(share.ref_id)?.notebook_id;
+    }
+    if (!notebook) throw httpError(400, 'There’s nowhere to put a new note in this.');
+    const id = Number(db.prepare('INSERT INTO notes (notebook_id, title, html, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(notebook, title, '', '', now, now).lastInsertRowid);
+    if (share.kind === 'study') db.prepare("INSERT OR IGNORE INTO study_notes (study_id, note_id, role, added_at) VALUES (?, ?, 'note', ?)").run(share.ref_id, id, now);
+    lastEditor.set(id, name);
+    broadcast({ url: '/api/notes', method: 'POST', note: id, client: null });
+    return { key: id };
+  });
+}
+
+/** Full control: a note out of a notebook or project I share, into my Trash. */
+function deleteRemote(share, noteId) {
+  if (share.kind === 'note') throw httpError(400, 'Only the owner can stop sharing this note.');
+  db.prepare('UPDATE notes SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL').run(Date.now(), noteId);
+  broadcast({ url: `/api/notes/${noteId}`, method: 'DELETE', note: noteId, client: null });
+  return { ok: true };
+}
+
+
+// ---------- builders in shares (14.3) ----------
+// Someone who can edit a sermon, lesson or Bible study I share opens it in its builder. The builder's calls come
+// here by name (only these), each checked against the shared note, and run through this Selah's own routes (signed in
+// for the moment, as the demo seed does), so they're stored exactly as my own builder would. Saves are live saves in
+// the note's builder room, their HTML cleaned first.
+
+let selfApp = null;
+const pick = (o, keys) => Object.fromEntries(keys.filter((k) => o && k in o).map((k) => [k, o[k]]));
+
+async function asOwner(method, url, payload, member) {
+  const token = crypto.randomBytes(32).toString('base64url');
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  const now = Date.now();
+  db.prepare(`INSERT INTO sessions (token_hash, created_at, expires_at, ip, user_agent, app, last_seen_at, two_factor, confirmed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(hash, now, now + 60_000, '127.0.0.1', 'Selah share builder', null, now, 1, now);
+  try {
+    const r = await selfApp.inject({
+      method, url, payload, remoteAddress: '127.0.0.1',
+      headers: { cookie: `__Host-selah_session=${token}`, host: 'localhost', 'sec-fetch-site': 'same-origin', 'user-agent': 'Selah share builder', 'x-client-id': member,
+        ...(config.desktopKey ? { 'x-selah-desktop': config.desktopKey } : {}) },
+    });
+    const data = r.body ? (() => { try { return JSON.parse(r.body); } catch { return null; } })() : null;
+    if (r.statusCode >= 400) throw httpError(r.statusCode === 409 ? 409 : r.statusCode < 500 ? r.statusCode : 500, data?.error ?? 'That didn’t work.');
+    return data;
+  } finally {
+    db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hash);
+  }
+}
+
+const cleanWrite = (share, b) => ({
+  ...(typeof b?.html === 'string' ? { html: sanitizeNoteHtml(b.html).replace(SHARED_FILE(share.id), '/api/files/$1') } : {}),
+  ...(typeof b?.title === 'string' ? { title: clip(b.title, 500) } : {}),
+  ...(b?.live != null ? { live: b.live } : {}),
+});
+
+async function builderCall(share, key, member, name, method, args) {
+  const a = Array.isArray(args) ? args : [];
+  const started = Date.now();
+  const sameNote = (id) => { if (Number(id) !== key) throw httpError(403, 'Only the shared note can be opened here.'); };
+  const sermonId = () => db.prepare('SELECT id FROM sermons WHERE note_id = ?').get(key)?.id;
+  const bibleId = () => db.prepare('SELECT id FROM bible_studies WHERE note_id = ?').get(key)?.id;
+  let r;
+  switch (method) {
+    case 'getNote': sameNote(a[0]); return asOwner('GET', `/api/notes/${key}`, undefined, member);
+    case 'makeSermon': sameNote(a[0]); return asOwner('POST', `/api/notes/${key}/sermon`, undefined, member);
+    case 'writeSermon': sameNote(a[0]); r = await asOwner('PUT', `/api/notes/${key}/sermon`, cleanWrite(share, a[1]), member); break;
+    case 'updateSermon': {
+      if (Number(a[0]) !== sermonId()) throw httpError(403, 'Only the shared sermon can be changed here.');
+      const p = a[1] ?? {};
+      return asOwner('PATCH', `/api/sermons/${a[0]}`, { ...pick(p, ['passage']), ...(p.data ? { data: pick(p.data, ['worksheet', 'minutes', 'step', 'stale']) } : {}) }, member);
+    }
+    case 'lesson': sameNote(a[0]); return asOwner('GET', `/api/notes/${key}/lesson`, undefined, member);
+    case 'writeLesson': {
+      sameNote(a[0]);
+      const b = a[1] ?? {};
+      r = await asOwner('PUT', `/api/notes/${key}/lesson`, { ...cleanWrite(share, b), ...pick(b, ['ref', 'date']),
+        ...(b.lesson ? { lesson: pick(b.lesson, ['step', 'minutes', 'qtypes', 'levelOv', 'levels']) } : {}) }, member);
+      break;
+    }
+    case 'makeBibleStudy': sameNote(a[0]); return asOwner('POST', `/api/notes/${key}/bible-study`, undefined, member);
+    case 'writeBibleStudy': sameNote(a[0]); r = await asOwner('PUT', `/api/notes/${key}/bible-study`, cleanWrite(share, a[1]), member); break;
+    case 'updateBibleStudy': {
+      if (Number(a[0]) !== bibleId()) throw httpError(403, 'Only the shared study can be changed here.');
+      const p = a[1] ?? {};
+      return asOwner('PATCH', `/api/bible-studies/${a[0]}`, { ...pick(p, ['passage']), ...(p.data ? { data: pick(p.data, ['timesRead', 'translations', 'checks', 'step', 'keeper']) } : {}) }, member);
+    }
+    default: throw httpError(403, 'That isn’t available in a shared builder.');
+  }
+  // A save: version history names who it was (the builder's own "before it saved" copy says so), and the owner's
+  // next turn keeps theirs.
+  db.prepare(`UPDATE note_versions SET reason = ? WHERE id = (SELECT id FROM note_versions WHERE note_id = ? AND reason LIKE 'Before the % builder saved'
+    AND created_at >= ? ORDER BY created_at DESC, id DESC LIMIT 1)`).run(`Before ${name} saved in the builder`, key, started);
+  lastEditor.set(key, name);
+  return r;
+}
+
 // ---------- events from the hub ----------
 
 function onEvent(e) {
@@ -268,6 +472,14 @@ function onEvent(e) {
     case 'state':
       setSetting('sharing_off', e.on === false ? 'yes' : 'no');
       return changed('state');
+    case 'live':
+      // Someone a share of mine is for, in one of its notes (14.3): answered from the note's live room.
+      answerLive(e);
+      return undefined;
+    case 'live-msg':
+      // The live room of a note shared with me, to one of my windows.
+      if (typeof e.client === 'string' && e.msg && typeof e.msg === 'object') sendTo(e.client, { ...e.msg, note: `${e.shareId}:${e.msg.note}` });
+      return undefined;
     default:
   }
 }
@@ -331,7 +543,7 @@ async function myShares(contacts = null) {
   const unread = list.length ? (await hub('GET', '/v1/mine')).shares : {};
   return list.map((s) => ({
     id: s.id, kind: s.kind, refId: s.ref_id, title: s.title || refTitle(s.kind, s.ref_id) || '', allowCopy: !!s.allow_copy,
-    allowComments: !!s.allow_comments, sentAt: s.sent_at, people: people(s.id).map((slug) => ({ slug, name: names.get(slug) ?? slug })),
+    allowComments: !!s.allow_comments, sentAt: s.sent_at, people: peopleRoles(s.id).map(({ slug, role }) => ({ slug, role, name: names.get(slug) ?? slug })),
     comments: unread[s.id] ?? 0,
   }));
 }
@@ -343,6 +555,7 @@ const sid = (v) => { const id = String(v ?? ''); if (!SHARE_ID.test(id)) throw h
 // ---------- routes ----------
 
 export default async function sharingRoutes(app) {
+  selfApp = app;
   app.get('/api/sharing', async () => {
     if (!enabled()) return { enabled: false };
     const [{ contacts }, { shares }, mine, me] = await Promise.all([hub('GET', '/v1/contacts'), hub('GET', '/v1/shared'), hub('GET', '/v1/mine'), hub('GET', '/v1/me')]);
@@ -392,7 +605,13 @@ export default async function sharingRoutes(app) {
     const refId = Number(b.id);
     if (!KINDS.includes(kind) || !Number.isInteger(refId)) throw httpError(400, 'Bad item');
     if (refTitle(kind, refId) == null) throw httpError(404, 'Not found');
-    const list = [...new Set((Array.isArray(b.people) ? b.people : []).map(String))];
+    // 14.3: people as slugs, or { slug, role } (read, edit or full).
+    const roles = new Map();
+    for (const p of Array.isArray(b.people) ? b.people : []) {
+      const slug = String(typeof p === 'object' && p ? p.slug : p);
+      roles.set(slug, typeof p === 'object' && ROLES.includes(p?.role) ? p.role : 'read');
+    }
+    const list = [...roles.keys()];
     const { contacts } = await hub('GET', '/v1/contacts');
     for (const slug of list) if (!contacts.some((c) => c.slug === slug && c.status === 'accepted')) throw httpError(400, `${slug} can’t be shared with: sharing is off for them, or they’re hidden from others.`);
     let s = ownerShareOf(kind, refId);
@@ -411,8 +630,13 @@ export default async function sharingRoutes(app) {
     const now = Date.now();
     tx(() => {
       db.prepare(`DELETE FROM share_people WHERE share_id = ? AND slug NOT IN (${list.map(() => '?').join(', ')})`).run(s.id, ...list);
-      for (const slug of list) db.prepare('INSERT OR IGNORE INTO share_people (share_id, slug, added_at) VALUES (?, ?, ?)').run(s.id, slug, now);
+      for (const slug of list) {
+        db.prepare('INSERT OR IGNORE INTO share_people (share_id, slug, added_at, role) VALUES (?, ?, ?, ?)').run(s.id, slug, now, roles.get(slug));
+        db.prepare('UPDATE share_people SET role = ? WHERE share_id = ? AND slug = ?').run(roles.get(slug), s.id, slug);
+      }
     });
+    // Someone who can only read now (or isn't in it any more) leaves its live rooms; they come back to read.
+    for (const slug of list) if (roles.get(slug) === 'read') dropRemote(`hub:${s.id}:${slug}:`);
     await sendSnapshot(shareOf(s.id));
     return { share: (await myShares(contacts)).find((x) => x.id === s.id) };
   });
@@ -430,6 +654,20 @@ export default async function sharingRoutes(app) {
   app.get('/api/shared/:id', async (req) => hub('GET', `/v1/shared/${sid(req.params.id)}`));
   app.post('/api/shared/:id/seen', async (req) => hub('POST', `/v1/shared/${sid(req.params.id)}/seen`));
   app.get('/api/shared/:id/notes/:key', async (req) => hub('GET', `/v1/shared/${sid(req.params.id)}/notes/${Number(req.params.key)}`));
+
+  // 14.3 live co-editing in a note shared with me: to the owner's Selah through the hub.
+  const live = (req, op, key, body) => hub('POST', `/v1/shared/${sid(req.params.id)}/live`, {
+    op, key, client: String(req.headers['x-client-id'] ?? ''), device: deviceName(String(req.headers['user-agent'] ?? ''), req.session?.app ?? ''), body,
+  }, { timeout: 20_000 });
+  app.post('/api/shared/:id/notes/:key/coedit/:op', { bodyLimit: 12 * 1024 * 1024 }, async (req) => {
+    const op = String(req.params.op);
+    if (!['join', 'sync', 'leave'].includes(op)) throw httpError(404, 'Not found');
+    return live(req, op, Number(req.params.key), req.body ?? {});
+  });
+  app.post('/api/shared/:id/notes/:key/save', { bodyLimit: 12 * 1024 * 1024 }, async (req) => live(req, 'save', Number(req.params.key), req.body ?? {}));
+  app.post('/api/shared/:id/notes', async (req) => live(req, 'add', null, { title: clip(req.body?.title, 500) }));
+  app.post('/api/shared/:id/notes/:key/builder', { bodyLimit: 12 * 1024 * 1024 }, async (req) => live(req, 'builder', Number(req.params.key), { method: String(req.body?.method ?? ''), args: req.body?.args ?? [] }));
+  app.delete('/api/shared/:id/notes/:key', async (req) => live(req, 'delete', Number(req.params.key), {}));
 
   app.get('/api/shared/:id/files/:att', async (req, reply) => {
     const res = await hub('GET', `/v1/shared/${sid(req.params.id)}/files/${Number(req.params.att)}`, undefined, { raw: true, timeout: 30 * 60_000 });

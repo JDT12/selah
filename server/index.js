@@ -52,6 +52,7 @@ import guide from './guide.js';
 import ocr from './ocr.js';
 import { addCornellTemplate } from './cornell.js';
 import { eventRoutes } from './events.js';
+import coeditRoutes from './coedit.js';
 import desktopBackups, { scheduleDesktopBackups, seedDesktopDemo } from './desktopbackup.js';
 import tenant, { quotaCheck, startTenant } from './tenant.js';
 import cloudUpdate from './cloudupdate.js';
@@ -129,6 +130,8 @@ if (config.mode === 'single') app.get('/ca.crt', async (req, reply) => {
 await app.register(fastifyStatic, { root: config.filesDir, serve: false });
 // Live updates: added on the app itself (not as a plugin) so its onResponse hook sees every route.
 eventRoutes(app);
+// 14.3 live co-editing: on the app itself too, so its onResponse hook sees changes to notes from every route.
+await coeditRoutes(app);
 await app.register(security);
 await app.register(account);
 await app.register(routes);

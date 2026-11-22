@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
@@ -7,6 +7,12 @@ import { useDialog } from './Dialogs.jsx';
 import { splitLogosQuote } from '../editor/LogosPaste.js';
 
 const esc = (t) => String(t ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Where an offset in `before` is in `after` (what's the same at the start stays put). */
+function shiftOffset(pos, before, after) {
+  let p = 0;
+  while (p < before.length && p < after.length && before[p] === after[p]) p++;
+  return pos <= p ? pos : Math.max(p, pos + after.length - before.length);
+}
 /** The editor's HTML, with an empty box as ''. */
 const htmlOf = (editor) => (editor.isEmpty ? '' : editor.getHTML());
 
@@ -59,11 +65,32 @@ export default function RichBox({ html, onChange, placeholder = '', rows = 3, la
     },
   });
 
-  // A change from outside (a photo's words added, the reiteration refreshed, the builder reloaded) shows in the box.
-  useEffect(() => {
+  // A change from outside (a photo's words added, the reiteration refreshed, the builder reloaded, 14.3: someone
+  // else typing) shows in the box, before the page is drawn, so nothing typed in between is lost.
+  useLayoutEffect(() => {
     if (!editor || (html ?? '') === sent.current) return;
     sent.current = html ?? '';
-    editor.commands.setContent(html ?? '', { emitUpdate: false });
+    // 14.3: someone else typing in this box (live co-editing): the cursor stays where it was, moved by what they
+    // added or took out before it.
+    if (!editor.isFocused) { editor.commands.setContent(html ?? '', { emitUpdate: false }); return; }
+    const textTo = (d, p) => d.textBetween(0, p, '\n', '\n');
+    const old = editor.state.doc;
+    const { from, to } = editor.state.selection;
+    const oldText = textTo(old, old.content.size);
+    const marks = [textTo(old, from).length, textTo(old, to).length];
+    // Spaces kept as they are: a space typed at the end of a line is still there when the others' typing arrives.
+    editor.commands.setContent(html ?? '', { emitUpdate: false, parseOptions: { preserveWhitespace: 'full' } });
+    const doc = editor.state.doc;
+    const newText = textTo(doc, doc.content.size);
+    // A text offset back to a place in the document (the text grows with the position).
+    const posAt = (n) => {
+      let lo = 0;
+      let hi = doc.content.size;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (textTo(doc, mid).length < n) lo = mid + 1; else hi = mid; }
+      return lo;
+    };
+    const [a, b] = marks.map((n) => posAt(shiftOffset(n, oldText, newText)));
+    try { editor.commands.setTextSelection({ from: a, to: b }); } catch { /* past the end */ }
   }, [html, editor]);
 
   const setLink = async () => {

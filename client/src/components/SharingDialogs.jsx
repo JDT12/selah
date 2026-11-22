@@ -35,10 +35,20 @@ export const openShareInstead = (dialog, { noun, onExport, onPrint }) => dialog.
 ));
 
 /** `alsoIn`: shared notebooks and projects this note is in ({ kind, title, people }), mentioned so it's clear who sees it already. */
+// 14.3: what each person may do. Full control (adding and taking out notes) is for a notebook or project.
+const ROLE_LABEL = { read: 'Can read', edit: 'Can edit', full: 'Full control' };
+const ROLE_HINT = {
+  read: 'Reads it as you write it.',
+  edit: 'Edits it with you, live: you see each other type.',
+  full: 'Edits it live, and can add notes and take them out (to your Trash).',
+};
+
 export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
   const dialog = useDialog();
   const [state, setState] = useState(null);
-  const [picked, setPicked] = useState(new Set());
+  // slug → role (read, edit, full)
+  const [picked, setPicked] = useState(new Map());
+  const roles = kind === 'note' ? ['read', 'edit'] : ['read', 'edit', 'full'];
   const [allowCopy, setAllowCopy] = useState(false);
   const [allowComments, setAllowComments] = useState(true);
   const [error, setError] = useState(null);
@@ -47,7 +57,7 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
   const load = () => Promise.all([api.sharing(), api.shareOf(kind, id)]).then(([s, { share }]) => {
     setState({ ...s, share });
     if (share) {
-      setPicked(new Set(share.people.map((p) => p.slug)));
+      setPicked(new Map(share.people.map((p) => [p.slug, p.role ?? 'read'])));
       setAllowCopy(share.allowCopy);
       setAllowComments(share.allowComments);
     }
@@ -56,18 +66,19 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
 
   const contacts = state?.contacts ?? [];
   const toggle = (slug) => setPicked((s) => {
-    const next = new Set(s);
-    if (next.has(slug)) next.delete(slug); else next.add(slug);
+    const next = new Map(s);
+    if (next.has(slug)) next.delete(slug); else next.set(slug, 'read');
     return next;
   });
+  const setRole = (slug, role) => setPicked((s) => new Map(s).set(slug, role));
   const save = async (e) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.shareItem({ kind, id, people: [...picked], allowCopy, allowComments });
+      await api.shareItem({ kind, id, people: [...picked].map(([slug, role]) => ({ slug, role })), allowCopy, allowComments });
       loadSharing();
-      dialog.toast(picked.size ? `Shared with ${picked.size === 1 ? contacts.find((c) => picked.has(c.slug))?.name || [...picked][0] : `${picked.size} people`}` : 'Not shared any more');
+      dialog.toast(picked.size ? `Shared with ${picked.size === 1 ? contacts.find((c) => picked.has(c.slug))?.name || [...picked.keys()][0] : `${picked.size} people`}` : 'Not shared any more');
       close(true);
     } catch (err) {
       setError(err.message);
@@ -89,7 +100,7 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
     <form className="share-dialog" onSubmit={save}>
       <h2>Share {NOUN[kind]}</h2>
       <p className="modal-message"><strong>{title || 'Untitled'}</strong> · {kind === 'notebook' ? 'They see every note in it, and new ones as you add them.'
-        : kind === 'study' ? 'They see its notes in order, as pages.' : 'They see it as you write it.'} Read-only: they can’t change it.</p>
+        : kind === 'study' ? 'They see its notes in order, as pages.' : 'They see it as you write it.'} Choose what each person can do.</p>
       {alsoIn.map((s) => (
         <p key={s.id} className="share-also"><Icon name="share" size={14} />
           <span>It’s in “{s.title}”, shared with {s.people.map((p) => p.name).join(', ')}. Sharing the note too lets you share it with others, or set comments and copying for it alone.</span>
@@ -116,11 +127,19 @@ export function ShareDialog({ kind, id, title, alsoIn = [], close }) {
               </div>
             )}
             {contacts.map((c) => (
-              <label key={c.slug} className={`share-person ${picked.has(c.slug) ? 'is-on' : ''}`}>
-                <input type="checkbox" checked={picked.has(c.slug)} onChange={() => toggle(c.slug)} />
-                <span className="share-avatar" aria-hidden="true">{(c.name || c.slug).slice(0, 1).toUpperCase()}</span>
-                <span className="share-person-name">{c.name || c.slug}<small>{c.slug}</small></span>
-              </label>
+              <div key={c.slug} className={`share-person-row ${picked.has(c.slug) ? 'is-on' : ''}`}>
+                <label className={`share-person ${picked.has(c.slug) ? 'is-on' : ''}`}>
+                  <input type="checkbox" checked={picked.has(c.slug)} onChange={() => toggle(c.slug)} />
+                  <span className="share-avatar" aria-hidden="true">{(c.name || c.slug).slice(0, 1).toUpperCase()}</span>
+                  <span className="share-person-name">{c.name || c.slug}<small>{picked.has(c.slug) ? ROLE_HINT[picked.get(c.slug)] : c.slug}</small></span>
+                </label>
+                {picked.has(c.slug) && (
+                  <select className="input share-role" value={roles.includes(picked.get(c.slug)) ? picked.get(c.slug) : 'edit'} aria-label={`What ${c.name || c.slug} can do`}
+                    onChange={(e) => setRole(c.slug, e.target.value)}>
+                    {roles.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+                  </select>
+                )}
+              </div>
             ))}
           </div>
           <label className="check-row">

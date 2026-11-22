@@ -151,6 +151,16 @@ export function snapshot(noteId, { reason = null, force = false } = {}) {
   thin(noteId);
 }
 
+/**
+ * 14.3: before someone else's turn in a shared note (or the owner's after theirs), the note as it was, named for who
+ * wrote it (by: their name, or null for the owner). At most one every two minutes while people take turns quickly.
+ */
+export function turnSnapshot(noteId, by, next = null) {
+  const last = db.prepare('SELECT created_at FROM note_versions WHERE note_id = ? ORDER BY created_at DESC, id DESC LIMIT 1').get(noteId);
+  if (last && Date.now() - last.created_at < 2 * 60 * 1000) return;
+  snapshot(noteId, { reason: by ? `Edited by ${by}` : next ? `Before ${next}’s changes` : null, force: true });
+}
+
 /** Keeps every version from the last day, then the latest of each day for a month, then the latest of each week (marked drafts always). */
 function thin(noteId) {
   const now = Date.now();

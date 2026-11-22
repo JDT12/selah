@@ -13,6 +13,8 @@ export function useComplete(noteId, onError) {
   const [loaded, setLoaded] = useState(false);
   useEffect(() => {
     let live = true;
+    // 14.3: a builder for a note shared with me has no completion of mine to show.
+    if (!noteId) { setLoaded(true); return () => {}; }
     api.noteComplete(noteId).then((r) => { if (live) { setAt(r.completed_at); setLoaded(true); } }).catch(() => live && setLoaded(true));
     return () => { live = false; };
   }, [noteId]);

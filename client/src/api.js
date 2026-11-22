@@ -82,6 +82,11 @@ export const api = {
   shared: (id) => request('GET', `/api/shared/${id}`),
   sharedSeen: (id) => request('POST', `/api/shared/${id}/seen`),
   sharedNote: (id, key) => request('GET', `/api/shared/${id}/notes/${key}`),
+  // 14.3: editing a note shared with me (Edit or Full control), and adding or taking out notes (Full control).
+  sharedSave: (id, key, body) => request('POST', `/api/shared/${id}/notes/${key}/save`, body),
+  sharedAdd: (id, title) => request('POST', `/api/shared/${id}/notes`, { title }),
+  sharedDelete: (id, key) => request('DELETE', `/api/shared/${id}/notes/${key}`),
+  sharedBuilder: (id, key, method, args) => request('POST', `/api/shared/${id}/notes/${key}/builder`, { method, args }),
   copyShared: (id, key = null) => request('POST', `/api/shared/${id}/copy`, { key }),
   commentShared: (id, body) => request('POST', `/api/shared/${id}/comments`, body),
   noteShareComments: (id) => request('GET', `/api/notes/${id}/share-comments`),

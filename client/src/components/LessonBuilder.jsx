@@ -17,6 +17,9 @@ import {
 } from '../lesson.js';
 import { boxHtml, editField, uid, words } from '../sermon.js';
 import RichBox from './RichBox.jsx';
+import WhoIsHere from './WhoIsHere.jsx';
+import { useBuilderApi, useBuilderEnv } from '../builderApi.js';
+import { useLiveModel } from '../liveModel.js';
 import { builderKeyAnswers, openBuilderPage, useAutosave } from '../builderPages.js';
 import { useStoredState } from '../useStoredState.js';
 import { chooseMethod } from './MethodPicker.jsx';
@@ -270,7 +273,9 @@ const REACHED = { yes: 'yes', partly: 'partly', no: 'not really' };
 
 export default function LessonBuilder({ noteId, close }) {
   const dialog = useDialog();
-  const [completeAt, toggleComplete] = useComplete(noteId, (e) => dialog.toast(e.message, 'error'));
+  const api = useBuilderApi(); // 14.3: the owner's Selah, in a builder for a note shared with me (builderApi.js)
+  const { shared } = useBuilderEnv();
+  const [completeAt, toggleComplete] = useComplete(shared ? null : noteId, (e) => dialog.toast(e.message, 'error'));
   const [info, setInfo] = useState(null); // { item, study, prev, next }
   const [model, setModel] = useState(null);
   const [meta, setMeta] = useState(null); // { title, passage, date, classMinutes, minutes, qtypes }
@@ -285,8 +290,15 @@ export default function LessonBuilder({ noteId, close }) {
   const addPoint = useRef(null);
   // The levels the lesson reaches, saved with it so the course page can show them.
   const levelsRef = useRef(null);
+  // 14.3: live co-editing with everyone else in this builder (liveModel.js). round goes up when the room starts
+  // again (the note was changed outside the builder): the note loads again.
+  const [loadedRound, setLoadedRound] = useState(-1);
+  const { peers, round, saveFields } = useLiveModel({
+    noteId, ready: !!(model && meta), loaded: loadedRound, values: { model, meta }, set: { model: setModel, meta: setMeta },
+  });
 
   useEffect(() => {
+    const thisRound = round;
     (async () => {
       try {
         const [l, note] = await Promise.all([api.lesson(noteId), api.getNote(noteId)]);
@@ -300,7 +312,9 @@ export default function LessonBuilder({ noteId, close }) {
           title: note.title ?? '', passage: lessonPassage({ ref: l.item?.ref, model: m, title: note.title }), date: l.item?.date ?? '',
           classMinutes: l.study?.classMinutes ?? 45, minutes: lesson.minutes ?? {}, qtypes: lesson.qtypes ?? {}, levelOv: lesson.levelOv ?? {},
         });
-        setStep(Math.min(STEPS.length - 1, Math.max(0, lesson.step ?? 0)));
+        if (!thisRound) setStep(Math.min(STEPS.length - 1, Math.max(0, lesson.step ?? 0)));
+        setDirty(false);
+        setLoadedRound(thisRound);
         if (l.prev?.note_id) {
           api.getNote(l.prev.note_id).then((p) => setPrevTook(section(parseLesson(p.html), 'took').field.text.trim())).catch(() => {});
         }
@@ -309,7 +323,7 @@ export default function LessonBuilder({ noteId, close }) {
         close(false);
       }
     })();
-  }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [noteId, round]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const edit = (fn) => { setModel((m) => fn(m)); setDirty(true); };
   const setM = (patch) => { setMeta((m) => ({ ...m, ...patch })); setDirty(true); };
@@ -321,7 +335,7 @@ export default function LessonBuilder({ noteId, close }) {
   const save = useCallback(async ({ overwrite = false } = {}) => {
     setBusy(true);
     try {
-      const body = { html, title: meta.title, base_updated_at: base.current, overwrite, classMinutes: meta.classMinutes };
+      const body = { html, title: meta.title, ...saveFields(base.current), overwrite, classMinutes: meta.classMinutes };
       if (info.item) Object.assign(body, { ref: meta.passage, date: meta.date || null, lesson: { step, minutes: meta.minutes, qtypes: meta.qtypes, levelOv: meta.levelOv, levels: levelsRef.current } });
       const r = await api.writeLesson(noteId, body);
       base.current = r.updated_at;
@@ -341,7 +355,7 @@ export default function LessonBuilder({ noteId, close }) {
       dialog.toast(e.message, 'error');
       return false;
     }
-  }, [noteId, html, meta, step, info, dialog]);
+  }, [noteId, html, meta, step, info, dialog, saveFields]);
 
   const leave = async () => {
     if (dirty) {
@@ -403,7 +417,7 @@ export default function LessonBuilder({ noteId, close }) {
     questions: [['Add to the questions', (t) => addLines('look', t)]],
     application: [['Use in the took', (t) => append('took', t)]],
   };
-  const studies = <FromStudies passage={meta.passage} actions={fromStudy} />;
+  const studies = shared ? null : <FromStudies passage={meta.passage} actions={fromStudy} />;
   const bigQuote = big && <p className="sb-quote"><span className="muted">Big idea</span> {big}</p>;
   const qCounts = QTYPES.map(([k, l]) => [l, questions.filter((q) => q.level === 0 && typeOf(q.text, meta.qtypes) === k).length]);
   const cycleType = (q) => {
@@ -435,20 +449,24 @@ export default function LessonBuilder({ noteId, close }) {
   const lastTime = info.item?.previous;
 
   const present = async () => {
+    if (shared) return;
     if (dirty && !(await save())) return;
     close(true);
     presentNote(dialog, noteId);
   };
   const teachIt = async () => {
+    if (shared) return;
     if (dirty && !(await save())) return;
     close(true);
     teachNote(dialog, noteId);
   };
   const exportIt = async () => {
+    if (shared) return;
     if (dirty && !(await save())) return;
     exportManuscript(dialog, noteId);
   };
   const handout = async () => {
+    if (shared) return;
     if (dirty && !(await save())) return;
     printHandout(dialog, noteId, { mainPoints: true });
   };
@@ -613,10 +631,10 @@ export default function LessonBuilder({ noteId, close }) {
           ))}
           <li className={big ? 'is-done' : ''}><button type="button" className="link-btn" onClick={() => setStep(0)}><Icon name={big ? 'checkCircle' : 'clock'} size={14} /> Big idea</button></li>
         </ul>
-        <MarkComplete at={completeAt} onToggle={toggleComplete} what="Lesson" open={STEPS.slice(0, -1).filter((x) => !doneOf[x.key]).length + (big ? 0 : 1)} />
+        {!shared && <MarkComplete at={completeAt} onToggle={toggleComplete} what="Lesson" open={STEPS.slice(0, -1).filter((x) => !doneOf[x.key]).length + (big ? 0 : 1)} />}
         <LevelsMeter counts={counts} note={false} />
         {timing}
-        <div className="gb-sermon">
+        {!shared && <div className="gb-sermon">
           <p className="sb-part-head"><strong>Teach It</strong></p>
           <p>Teach from the lesson in teach mode (its steps’ timing, the questions to tick off, and its slides), present its slides on a screen, print a class handout (the main points and the questions, with room to write), or export your teaching manuscript as PDF, Word or rich text.</p>
           <div className="gb-forward-btns">
@@ -625,7 +643,7 @@ export default function LessonBuilder({ noteId, close }) {
             <button type="button" className="btn" disabled={busy} onClick={handout}><Icon name="file" size={14} /> Print a class handout</button>
             <button type="button" className="btn" disabled={busy} onClick={exportIt}><Icon name="download" size={14} /> Export the manuscript</button>
           </div>
-        </div>
+        </div>}
       </>
     ),
   }[s.key];
@@ -639,7 +657,9 @@ export default function LessonBuilder({ noteId, close }) {
           <h2>{meta.title.trim() || 'Untitled Lesson'}</h2>
           <span className="muted">{[info.item?.week && course ? `Week ${info.item.week} of ${course.weeks}` : null, meta.passage, info.study?.title, meta.date && dayLabel(meta.date)].filter(Boolean).join(' · ') || 'No passage yet'}{dirty ? ' · not saved' : ''}</span>
         </div>
-        {course && (info.prev?.note_id || info.next?.note_id) && (
+        {peers.length > 0 && <WhoIsHere peers={peers} />}
+        {shared && <span className="shared-badge" title={`Shared by ${shared.ownerName}: your changes save to their lesson`}><Icon name="share" size={12} /> {shared.ownerName}’s</span>}
+        {!shared && course && (info.prev?.note_id || info.next?.note_id) && (
           <span className="lb-weeknav">
             <button type="button" className="icon-btn" disabled={!info.prev?.note_id} onClick={() => goWeek(info.prev.note_id)} title={info.prev?.note_id ? `Week ${info.prev.week ?? ''}: ${info.prev.title}` : 'No earlier lesson yet'} aria-label="Previous week’s lesson"><Icon name="chevronLeft" size={16} /></button>
             <button type="button" className="icon-btn" disabled={!info.next?.note_id} onClick={() => goWeek(info.next.note_id)} title={info.next?.note_id ? `Week ${info.next.week ?? ''}: ${info.next.title}` : 'Next week’s lesson isn’t written yet'} aria-label="Next week’s lesson"><Icon name="chevronRight" size={16} /></button>
@@ -648,14 +668,14 @@ export default function LessonBuilder({ noteId, close }) {
         {anyPlanned && <span className={`lb-meter ${planned > meta.classMinutes ? 'lb-over' : ''}`} title="Minutes planned of the class length"><Icon name="clock" size={13} /> {planned}/{meta.classMinutes} min</span>}
         <div className="segmented sb-view" role="tablist" aria-label="View">
           <button type="button" role="tab" aria-selected={view !== 'slides'} className={view !== 'slides' ? 'is-active' : ''} onClick={() => setView('steps')}><Icon name="steps" size={14} /> Steps</button>
-          <button type="button" role="tab" aria-selected={view === 'slides'} className={view === 'slides' ? 'is-active' : ''} onClick={() => setView('slides')}><Icon name="monitor" size={14} /> Slides</button>
+          {!shared && <button type="button" role="tab" aria-selected={view === 'slides'} className={view === 'slides' ? 'is-active' : ''} onClick={() => setView('slides')}><Icon name="monitor" size={14} /> Slides</button>}
         </div>
         {!showText && view !== 'slides' && <button type="button" className="btn" onClick={() => setShowText(true)}><Icon name="bible" size={14} /> <span className="sb-btn-label">Show the passage</span></button>}
-        <button type="button" className="btn" disabled={busy} onClick={teachIt} title="Teach mode: the lesson read-only, with its steps’ timing, questions and slides"><Icon name="play" size={14} /> <span className="sb-btn-label">Teach</span></button>
+        {!shared && <button type="button" className="btn" disabled={busy} onClick={teachIt} title="Teach mode: the lesson read-only, with its steps’ timing, questions and slides"><Icon name="play" size={14} /> <span className="sb-btn-label">Teach</span></button>}
         <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => save()}>{busy ? 'Saving…' : 'Save to note'}</button>
         <button type="button" className="icon-btn" onClick={leave} aria-label="Close the lesson builder"><Icon name="x" /></button>
       </header>
-      {view === 'slides' ? <SlidesEditor noteId={noteId} kind="lesson" source={slideSource} onPresent={present} /> : (
+      {view === 'slides' && !shared ? <SlidesEditor noteId={noteId} kind="lesson" source={slideSource} onPresent={present} /> : (
       <>
       <div className={`sb-main ${showText ? 'gb-with-text' : ''}`}>
         <nav className="sb-steps" aria-label="Steps">

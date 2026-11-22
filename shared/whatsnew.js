@@ -4,6 +4,19 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.3.0',
+    date: '',
+    title: 'Write together, live',
+    items: [
+      'A note open in more than one place (your computer, the web, your tablet) now changes everywhere as you type. No more “This note changed somewhere else.”',
+      'Sermon, lesson and study builders are live too: titles, boxes, outline points and divisions.',
+      'You see who else is in a note: their cursors carry their names, and small circles at the top show who’s there.',
+      'On Selah Ministry, share a note, notebook or project with each person as Can read, Can edit or Full control. People who can edit write in it with you, live, even in its builder; Full control can also add notes and take them out (to your Trash). Version history shows who changed what.',
+      'Your phone shows sermons and lessons changing live as you read them, and edits plain notes live.',
+      'Attendance follows a series: link a class to a lesson or sermon series (on the series page, or in the class’s settings) and every lesson in it has the Attendance button in Teach and Preach.',
+    ],
+  },
+  {
     version: '14.2.0',
     date: '2026-11-22',
     title: 'Selah Desktop on your phone and tablet',

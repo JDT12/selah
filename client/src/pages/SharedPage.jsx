@@ -12,10 +12,29 @@ import CommentThreads, { useCommentMarks } from '../components/CommentThreads.js
 import PdfReader from '../components/PdfReader.jsx';
 import { useDialog } from '../components/Dialogs.jsx';
 import Icon from '../components/Icon.jsx';
+import WhoIsHere from '../components/WhoIsHere.jsx';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
+import { joinCoedit, setYText } from '../coedit.js';
+import { BuilderEnv, sharedBuilderEnv } from '../builderApi.js';
+import SermonBuilder from '../components/SermonBuilder.jsx';
+import LessonBuilder from '../components/LessonBuilder.jsx';
+import StudyBuilder from '../components/StudyBuilder.jsx';
+
+// 14.3: the builder a shared note opens in, by its method (background and word studies have none here yet).
+const BUILDER_OF = { mcdill: SermonBuilder, hblt: LessonBuilder, points: LessonBuilder, ggw: StudyBuilder };
+const BUILDER_DEFAULT = { sermon: SermonBuilder, lesson: LessonBuilder };
+
+// 14.3: what each person may do with a share.
+const ROLE_BADGE = {
+  read: { icon: 'lock', label: 'Read-only', title: 'You can read it; only they can change it' },
+  edit: { icon: 'pen', label: 'Can edit', title: 'You can edit its notes with them, live' },
+  full: { icon: 'pen', label: 'Full control', title: 'You can edit its notes live, and add or take out notes' },
+};
 
 /**
- * Something shared with me (8.0): a note, a notebook or a project from a contact, read-only and kept up to date as
- * they write. Notes show as they would in the owner's Selah (a lesson, sermon or Bible study as its page), with the
+ * Something shared with me (8.0): a note, a notebook or a project from a contact, kept up to date as they write.
+ * 14.3: shared with me to edit, its notes open live (the owner's Selah keeps the live room; coedit.js), and with
+ * Full control notes can be added and taken out. Notes show as they would in the owner's Selah (a lesson, sermon or Bible study as its page), with the
  * comment margin beside them. A notebook or project lists its notes on the left.
  */
 export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMenu }) {
@@ -60,6 +79,21 @@ export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMen
     } catch (e) { dialog.toast(e.message, 'error'); }
   };
 
+  // Full control (14.3): a new note in their notebook or project, or one taken out (into their Trash).
+  const addNote = async () => {
+    const title = await dialog.prompt({ title: 'New note', label: 'Title', okLabel: 'Add' });
+    if (title == null) return;
+    try {
+      const r = await api.sharedAdd(shareId, title.trim() || 'Untitled');
+      await load();
+      if (r?.key) onPick(r.key);
+    } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+  const deleteNote = async (n) => {
+    if (!(await dialog.confirm({ title: `Take out “${n.title || 'Untitled'}”?`, message: `It goes to ${share.ownerName}’s Trash, where they can put it back.`, okLabel: 'Take out', danger: true }))) return;
+    try { await api.sharedDelete(shareId, n.key); await load(); } catch (e) { dialog.toast(e.message, 'error'); }
+  };
+
   if (error && !data) {
     return (
       <div className="shared-page is-empty">
@@ -82,7 +116,8 @@ export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMen
           <h1>{share.title || 'Untitled'}</h1>
         </div>
         <span className="spacer" />
-        <span className="shared-badge" title="You can read it; only they can change it"><Icon name="lock" size={12} /> Read-only</span>
+        {(() => { const b = ROLE_BADGE[share.role] ?? ROLE_BADGE.read; return <span className="shared-badge" title={b.title}><Icon name={b.icon} size={12} /> {b.label}</span>; })()}
+        {share.role === 'full' && many && <button type="button" className="btn btn-small" onClick={addNote}><Icon name="plus" size={14} /> New note</button>}
         {share.allowCopy && many && <button type="button" className="btn btn-small" onClick={() => copy(null)}><Icon name="copy" size={14} /> Copy all</button>}
       </header>
       {share.project?.description && <p className="shared-desc">{share.project.description}</p>}
@@ -94,7 +129,8 @@ export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMen
               <section key={`${g.grp}-${i}`}>
                 {g.grp && <h3>{g.grp}</h3>}
                 {g.notes.map((n) => (
-                  <button key={n.key} type="button" className={`shared-item ${n.key === key ? 'is-active' : ''}`} onClick={() => onPick(n.key)}>
+                  <div key={n.key} className="shared-item-row">
+                  <button type="button" className={`shared-item ${n.key === key ? 'is-active' : ''}`} onClick={() => onPick(n.key)}>
                     <span className="shared-item-title">{n.title || 'Untitled'}</span>
                     <span className="shared-item-meta">
                       {n.work && <span>{WORK_LABEL[n.work.type]}</span>}
@@ -102,6 +138,8 @@ export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMen
                       {n.comments > 0 && <span className="shared-item-comments"><Icon name="comment" size={11} /> {n.comments}</span>}
                     </span>
                   </button>
+                  {share.role === 'full' && <button type="button" className="icon-btn shared-item-del" onClick={() => deleteNote(n)} aria-label={`Take out ${n.title || 'Untitled'}`} title="Take out (to their Trash)"><Icon name="trash" size={13} /></button>}
+                  </div>
                 ))}
               </section>
             ))}
@@ -115,7 +153,46 @@ export default function SharedPage({ shareId, noteKey, onPick, onOpenNote, onMen
   );
 }
 
-function SharedNote({ share, noteKey, onCopy }) {
+function SharedNote(props) {
+  const { share, noteKey } = props;
+  // 14.3: open in its builder (Can edit or Full control): the builder's room on the owner's Selah instead.
+  const [building, setBuilding] = useState(null); // the builder component
+  const env = useMemo(() => sharedBuilderEnv({ shareId: share.id, key: noteKey, ownerName: share.ownerName }), [share.id, noteKey, share.ownerName]);
+  // 14.3: the note's live room on the owner's Selah, through mine and the share hub; false when it isn't live (read
+  // the shared copy, as before). round: the room started again, so it opens again.
+  const [live, setLive] = useState(null);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    let session = null;
+    let off = null;
+    setLive(null);
+    if (building) return () => {};
+    joinCoedit(noteKey, 'note', { base: `/api/shared/${share.id}/notes/${noteKey}/coedit`, id: `${share.id}:${noteKey}` }).then((s) => {
+      session = s;
+      if (!alive) { s?.destroy(); return; }
+      if (s) off = s.on('reset', () => setRound((r) => r + 1));
+      setLive(s || false);
+    });
+    return () => { alive = false; off?.(); session?.destroy(); };
+  }, [share.id, noteKey, round, share.role, building]); // a new role (Read, Edit): open it again with it
+  if (building) {
+    const Builder = building;
+    return (
+      <div className="shared-note shared-building">
+        <BuilderEnv.Provider value={env}>
+          <Builder noteId={noteKey} close={() => { setBuilding(null); setRound((r) => r + 1); }} />
+        </BuilderEnv.Provider>
+      </div>
+    );
+  }
+  if (live === null) return <div className="shared-note" />;
+  return <SharedNoteView onBuild={share.role !== 'read' && !device.phone ? setBuilding : null} key={`${round}-${share.role}`} {...props} live={live || null} onRestart={() => setRound((r) => r + 1)} />;
+}
+
+function SharedNoteView({ share, noteKey, onCopy, live, onRestart, onBuild }) {
+  const dialog = useDialog();
+  const canEdit = !!live?.canWrite;
   const [note, setNote] = useState(null);
   const [error, setError] = useState(null);
   const [current, setCurrent] = useState(null);
@@ -130,23 +207,73 @@ function SharedNote({ share, noteKey, onCopy }) {
     return () => window.removeEventListener('noteapp:live', on);
   }, [share.id, load]);
 
-  const extensions = useMemo(() => buildExtensions({ onFiles: () => {} }), []);
+  const extensions = useMemo(() => buildExtensions({
+    onFiles: () => dialog.toast(`Pictures and files can only be added by ${share.ownerName}.`, 'info'), live,
+  }), [live]); // eslint-disable-line react-hooks/exhaustive-deps
   const fileUrl = useCallback((id) => `/api/shared/${share.id}/files/${id}`, [share.id]);
+  const imageSrc = useCallback((src) => String(src ?? '').replace(/^\/api\/files\/(\d+)/, `/api/shared/${share.id}/files/$1`), [share.id]);
+  // Live, saves go to the owner's Selah a moment after this window's own typing (theirs is saved by them).
+  const saveTimer = useRef(null);
+  const editorRef = useRef(null);
+  const [saveState, setSaveState] = useState('saved');
+  const saveNow = useCallback(async () => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const ed = editorRef.current;
+    if (!live || !ed || ed.isDestroyed) return;
+    setSaveState('saving');
+    try {
+      await api.sharedSave(share.id, noteKey, { html: ed.getHTML(), title: live.title.toString(), live: live.epoch });
+      setSaveState('saved');
+    } catch (e) {
+      setSaveState('error');
+      if (e.status === 409) onRestart();
+      else dialog.toast(`Not saved: ${e.message}`, 'error');
+    }
+  }, [live, share.id, noteKey, onRestart, dialog]);
+  const saveRef = useRef(saveNow);
+  saveRef.current = saveNow;
+  const queueSave = useCallback(() => {
+    setSaveState('unsaved');
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveRef.current(), 800);
+  }, []);
+  useEffect(() => () => { if (saveTimer.current) { clearTimeout(saveTimer.current); saveRef.current(); } }, []);
   const editor = useEditor({
     extensions,
-    content: '<p></p>',
-    editable: false,
+    ...(live ? {} : { content: '<p></p>' }),
+    editable: canEdit,
     shouldRerenderOnTransaction: false,
-    editorProps: { attributes: { class: 'note-body' } },
+    editorProps: { attributes: { class: 'note-body', ...(canEdit ? { spellcheck: 'true' } : {}) } },
+    onCreate: ({ editor: e }) => { Object.assign(e.storage.noteApp, { fileUrl, imageSrc }); },
+    onUpdate: ({ transaction }) => { if (canEdit && !transaction?.getMeta(ySyncPluginKey)?.isChangeOrigin) queueSave(); },
   }, [extensions]);
+  editorRef.current = editor;
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
-    Object.assign(editor.storage.noteApp, { fileUrl });
-  }, [editor, fileUrl]);
-  // New text from the owner replaces the old where you are.
+    Object.assign(editor.storage.noteApp, { fileUrl, imageSrc });
+  }, [editor, fileUrl, imageSrc]);
+  // The first one in builds the live document from the owner's note (their own HTML, from the join).
+  const [title, setTitle] = useState(null);
+  useEffect(() => {
+    if (!live || !editor || editor.isDestroyed) return undefined;
+    if (live.seed) {
+      const { html: h, title: t } = live.seed;
+      editor.commands.setContent(h || '<p></p>', { emitUpdate: false });
+      live.doc.transact(() => { if (live.title.length) live.title.delete(0, live.title.length); live.title.insert(0, t ?? ''); });
+      live.seedDone();
+    }
+    setTitle(live.title.toString());
+    const onTitle = () => setTitle(live.title.toString());
+    live.title.observe(onTitle);
+    return () => live.title.unobserve(onTitle);
+  }, [live, editor]);
+  const [peers, setPeers] = useState(() => live?.peers() ?? []);
+  useEffect(() => (live ? live.on('peers', setPeers) : undefined), [live]);
+  // New text from the owner replaces the old where you are (not live: the shared copy).
   const html = note?.html;
   useEffect(() => {
-    if (!editor || editor.isDestroyed || html == null) return;
+    if (live || !editor || editor.isDestroyed || html == null) return;
     const scroller = editor.view.dom.closest('.shared-scroll');
     const top = scroller?.scrollTop;
     editor.commands.setContent(html || '<p></p>', { emitUpdate: false });
@@ -155,6 +282,9 @@ function SharedNote({ share, noteKey, onCopy }) {
 
   // A lesson, sermon or Bible study reads as its page, as it does for the owner.
   const workType = note?.work?.type ?? (note && isLessonNote(note.html) ? 'lesson' : null);
+  // A phone reads a sermon, lesson or study it could edit elsewhere (as with its own: device.js).
+  const editable = canEdit && !(device.phone && workType);
+  useEffect(() => { if (editor && !editor.isDestroyed && editor.isEditable !== editable) editor.setEditable(editable); }, [editor, editable]);
   const workMethod = workType ? methodById(note.work?.method) ?? methodById(WORK_DEFAULT[workType]) : null;
   const workCfg = useMemo(() => (workType && workMethod ? {
     on: true, level: workMethod.level, parts: workMethod.rest ? workMethod.sections.map((x) => x.match) : null,
@@ -200,12 +330,22 @@ function SharedNote({ share, noteKey, onCopy }) {
           <div className="shared-note-top">
             {workType && <span className="work-eyebrow">{WORK_LABEL[workType]}{workMethod ? ` · ${workMethod.name}` : ''}</span>}
             <span className="spacer" />
-            {note && <span className="muted shared-updated">Updated {formatDate(note.updatedAt)}</span>}
+            {peers.length > 0 && <WhoIsHere peers={peers} />}
+            {editable ? <span className={`save-status is-${saveState}`}>{{ saved: 'Saved', saving: 'Saving…', unsaved: 'Editing…', error: 'Not saved' }[saveState]}</span>
+              : note && <span className="muted shared-updated">Updated {formatDate(note.updatedAt)}</span>}
+            {onBuild && editable && workType && (BUILDER_OF[note?.work?.method] ?? (!note?.work?.method ? BUILDER_DEFAULT[workType] : null)) && (
+              <button type="button" className="btn btn-small" onClick={() => onBuild(() => BUILDER_OF[note?.work?.method] ?? BUILDER_DEFAULT[workType])}>
+                <Icon name="steps" size={13} /> Open in the builder
+              </button>
+            )}
             {onCopy && <button type="button" className="btn btn-small" onClick={onCopy}><Icon name="copy" size={13} /> Make a copy</button>}
             <button type="button" className={`icon-btn ${showComments ? 'is-on' : ''}`} onClick={() => setShowComments((s) => !s)} aria-pressed={showComments}
               title="Comments" aria-label="Comments"><Icon name="comment" size={16} />{threads.filter((t) => !t.resolvedAt).length > 0 && <span className="shared-count">{threads.filter((t) => !t.resolvedAt).length}</span>}</button>
           </div>
-          <h1 className="note-title is-static">{note?.title || 'Untitled'}</h1>
+          {editable
+            ? <textarea className="note-title" rows={1} value={title ?? ''} placeholder="Untitled" aria-label="Title"
+              onChange={(e) => { setTitle(e.target.value); setYText(live.title, e.target.value); queueSave(); }} />
+            : <h1 className="note-title is-static">{(live ? title : note?.title) || 'Untitled'}</h1>}
           {workType && <WorkMeta parts={parts} type={workType} passage={note?.work?.passage ?? ''} words={words} onPassage={null} />}
           <EditorContent editor={editor} />
           {note?.attachments?.length > 0 && (

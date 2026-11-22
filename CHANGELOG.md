@@ -4,6 +4,70 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+Selah 14.3 (in progress): live co-editing.
+
+- **Attendance follows a series**: a class or service can be taught from a lesson or sermon series
+  (`att_groups.study_id`; Plan → Attendance → Edit → Taught from, or the series page's Attendance chip). Every lesson
+  or sermon in the series (its notes and schedule) then has the group's Attendance button in Preach and Teach, with
+  nothing to set on the calendar (`GET /api/notes/:id/attendance` falls back to the series). Without a calendar event
+  the meeting is the lesson's session date when it's this week, else today.
+
+### Changed
+- Division and part ids in the builders (sermon.js `uid`) carry a random part per window, so two people adding a
+  division at once get different ones. Rich boxes keep the cursor (and spaces) when someone else's typing arrives, and
+  apply it before the page is drawn; outline lines keep their ids when the outline is read again.
+
+### Added
+- **Live co-editing in the note editor** (server/coedit.js, client/src/coedit.js): a note open in more than one window
+  (this PC, the web, a phone or tablet) is one shared Yjs document. Typing goes to the server in small batches
+  (`POST /api/coedit/:id/sync`, base64 Yjs updates) and reaches the others through their own live-updates stream
+  (`/api/events?client=`, events.js `sendTo`); TipTap's Collaboration and CollaborationCaret bind the editor to it.
+  The title is shared too (a Y.Text). Each window still saves the note's HTML (`PATCH /api/notes/:id` with `live`:
+  the room's epoch), read from the editor when the save goes out, and a live save is never a conflict. The room's state
+  is kept in `note_live` with the note's updated_at it belongs to; a change from outside the room (a builder, an
+  import, an older window) starts the room again (`epoch` + 1) and everyone in it reloads the note. The first window
+  in a room builds the document from the note's HTML; others wait for it. Undo in a live note is Yjs's (only this
+  window's own typing). Without a live-updates stream (or on an older server) the editor works as before.
+- **Who's here**: the others with the note open show as circles in their cursor colors beside Saved, and their
+  cursors carry their name and device.
+- **Sharing roles** (Selah Ministry): the owner chooses for each person Can read, Can edit or (a notebook or project)
+  Full control, in the share dialog. `share_people.role` on the Selah and on the hub (`read` | `edit` | `full`); the
+  people of a share are sent as `{ slug, role }` (plain slugs still mean read). Shared with me shows the role as its
+  badge; changing someone's role reopens what they have open.
+- **Live co-editing in shared notes**: the owner's Selah keeps the live room of each note it shares (coedit.js); people
+  on other Selahs are members as `hub:<share>:<their Selah>:<their window>`. Their Selah passes what they do to the
+  hub (`POST /api/shared/:id/notes/:key/coedit/:op` → `POST /v1/shared/:id/live`), which checks their role and passes
+  it to the owner's Selah as a `live` event, waiting for the answer (`/v1/shares/:id/live/reply`); the room's messages
+  go back through `/v1/shares/:id/live/send` as `live-msg` events. Someone who can read sees the typing live when
+  someone is editing; someone who can edit types with them (`POST /api/shared/:id/notes/:key/save`). Their HTML is
+  cleaned on the owner's Selah before it's saved (`sanitizeNoteHtml`, server/html.js: only what the editor makes; no
+  scripts, event attributes, frames, forms or javascript: links). Pictures show from the share (an image node view maps
+  the owner's /api/files addresses on screen only); pictures and files can only be added by the owner.
+- **Builders in shared notes**: someone who can edit a shared sermon, lesson or Interpretive Journey study opens it in
+  its builder (Open in the builder; not on a phone) and works in it live with the owner, through the note's builder
+  room on the owner's Selah. The builder reads and saves through `BuilderEnv` (client/src/builderApi.js): for a share,
+  only its loading and saving calls go (`POST /api/shared/:id/notes/:key/builder` → the hub → the owner's Selah,
+  which checks each against the shared note, cleans the HTML and runs it through its own routes); anything else throws.
+  Completion, series, slides, Preach and Teach, export, From your studies and starting a sermon or lesson from a
+  study are hidden in a shared builder. Background and word studies have no shared builder yet.
+- **Names in version history**: before someone else's turn in a shared note, and before the owner's after theirs, the
+  note is kept as it was, named ("Before Bob’s changes", "Edited by Bob"; at most one every two minutes).
+- **Phones and tablets**: live co-editing works in the Selah app as on the web, and over the Wi-Fi to Selah Desktop
+  (14.2's listener passes the live requests and each window's stream through). The tablet co-edits; the phone edits
+  live where it already could (plain notes) and shows a sermon, lesson or study changing live as it reads it, shared
+  ones too. `npm run test:devices` checks the PC, iPad and phone in one note.
+- **Full control**: add a note to a shared notebook or project (New note) and take one out (to the owner's Trash).
+ (sermon, lesson, Bible study, background and word study; client/src/liveModel.js):
+  everyone with a builder open shares its state through the note's `builder` room (rooms now have a kind, `note` or
+  `builder`, in `note_live` and every coedit message). The builder's model and meta are mirrored in one Yjs map:
+  objects as Y.Maps, arrays as Y.Arrays (a sermon's divisions matched by their uid, so adding, removing and moving them
+  on the Arrange board or the divisions step merge), and every string as a Y.Text changed by only this window's edit,
+  so typing in the same box merges. A keystroke not yet sent when the others' typing arrives goes in first. Saves
+  from a live builder (`PUT /api/notes/:id/sermon`, `/lesson`, `/bible-study` with `live`) are never conflicts. A
+  save from the note editor restarts the builder room and the other way round, so each loads the note again. A builder
+  room no one is in always starts again from the note (a sermon's passage or worksheet can change without the note).
+  Who's here shows in each builder's header.
+
 ## [14.2.0] - 2026-11-22
 
 Selah 14.2: local network mode. The Selah app on a phone or tablet opens Selah Desktop's library over the Wi-Fi.

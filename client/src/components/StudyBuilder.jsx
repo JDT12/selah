@@ -16,6 +16,9 @@ import {
 } from '../bibleStudy.js';
 import { CONCLUSION_PARTS, appendText, boxHtml, emptySermon, sermonHtml, setPart, words } from '../sermon.js';
 import RichBox from './RichBox.jsx';
+import WhoIsHere from './WhoIsHere.jsx';
+import { useBuilderApi, useBuilderEnv } from '../builderApi.js';
+import { useLiveModel } from '../liveModel.js';
 import { builderKeyAnswers, openBuilderPage, useAutosave } from '../builderPages.js';
 import { useStoredState } from '../useStoredState.js';
 import { chooseMethod } from './MethodPicker.jsx';
@@ -161,7 +164,9 @@ function Guidance({ step }) {
 
 export default function StudyBuilder({ noteId, close }) {
   const dialog = useDialog();
-  const [completeAt, toggleComplete] = useComplete(noteId, (e) => dialog.toast(e.message, 'error'));
+  const api = useBuilderApi(); // 14.3: the owner's Selah, in a builder for a note shared with me (builderApi.js)
+  const { shared } = useBuilderEnv();
+  const [completeAt, toggleComplete] = useComplete(shared ? null : noteId, (e) => dialog.toast(e.message, 'error'));
   const [study, setStudy] = useState(null);
   const [model, setModel] = useState(null);
   const [meta, setMeta] = useState(null); // { title, passage, timesRead, translations, checks }
@@ -171,8 +176,15 @@ export default function StudyBuilder({ noteId, close }) {
   const [showText, setShowText] = useStoredState('noteapp.gb.text', true);
   const [other, setOther] = useState('');
   const base = useRef(0);
+  // 14.3: live co-editing with everyone else in this builder (liveModel.js). round goes up when the room starts
+  // again (the note was changed outside the builder): the note loads again.
+  const [loadedRound, setLoadedRound] = useState(-1);
+  const { peers, round, saveFields } = useLiveModel({
+    noteId, ready: !!(model && meta), loaded: loadedRound, values: { model, meta }, set: { model: setModel, meta: setMeta },
+  });
 
   useEffect(() => {
+    const thisRound = round;
     (async () => {
       try {
         const [s, note] = await Promise.all([api.makeBibleStudy(noteId), api.getNote(noteId)]);
@@ -191,13 +203,15 @@ export default function StudyBuilder({ noteId, close }) {
           translations: s.data.translations ?? parsed.reading.translations ?? [],
           checks: s.data.checks ?? {},
         });
-        setStep(Math.min(STEPS.length - 1, Math.max(0, s.data.step ?? 0)));
+        if (!thisRound) setStep(Math.min(STEPS.length - 1, Math.max(0, s.data.step ?? 0)));
+        setDirty(false);
+        setLoadedRound(thisRound);
       } catch (e) {
         dialog.toast(e.message, 'error');
         close(false);
       }
     })();
-  }, [noteId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [noteId, round]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const set = (k, text) => { setModel((m) => setField(m, k, text)); setDirty(true); };
   const setM = (patch) => { setMeta((m) => ({ ...m, ...patch })); setDirty(true); };
@@ -207,7 +221,7 @@ export default function StudyBuilder({ noteId, close }) {
   const save = useCallback(async ({ overwrite = false } = {}) => {
     setBusy(true);
     try {
-      const r = await api.writeBibleStudy(noteId, { html, title: meta.title, base_updated_at: base.current, overwrite });
+      const r = await api.writeBibleStudy(noteId, { html, title: meta.title, ...saveFields(base.current), overwrite });
       base.current = r.updated_at;
       const s = await api.updateBibleStudy(study.id, {
         passage: meta.passage,
@@ -231,7 +245,7 @@ export default function StudyBuilder({ noteId, close }) {
       dialog.toast(e.message, 'error');
       return false;
     }
-  }, [noteId, html, meta, step, study, model, dialog]);
+  }, [noteId, html, meta, step, study, model, dialog, saveFields]);
 
   const leave = async () => {
     if (dirty) {
@@ -477,8 +491,8 @@ export default function StudyBuilder({ noteId, close }) {
             </li>
           ))}
         </ul>
-        <MarkComplete at={completeAt} onToggle={toggleComplete} what="Study" open={STEPS.slice(0, -1).filter((x) => !doneOf[x.key]).length} />
-        {week && (
+        {!shared && <MarkComplete at={completeAt} onToggle={toggleComplete} what="Study" open={STEPS.slice(0, -1).filter((x) => !doneOf[x.key]).length} />}
+        {!shared && week && (
           <div className="gb-sermon gb-week">
             <p className="sb-part-head"><strong>Week {week.week ?? ''} of {week.course}</strong></p>
             {week.lesson_note ? (
@@ -494,7 +508,7 @@ export default function StudyBuilder({ noteId, close }) {
             )}
           </div>
         )}
-        <div className="gb-sermon">
+        {!shared && <div className="gb-sermon">
           <p className="sb-part-head"><strong>Take It Further</strong></p>
           <p>A study is the first step. Start a sermon, a lesson or a chapter from it, and your work carries over: your summary, principle, questions and application.</p>
           <div className="gb-forward-btns">
@@ -513,7 +527,7 @@ export default function StudyBuilder({ noteId, close }) {
               ))}
             </ul>
           )}
-        </div>
+        </div>}
       </>
     ),
   }[s.key];
@@ -526,6 +540,8 @@ export default function StudyBuilder({ noteId, close }) {
           <h2>{meta.title.trim() || 'Untitled Study'}</h2>
           <span className="muted">{study?.plan ? `Bible studies › ${study.plan.title || 'Untitled study'} · ` : 'Bible studies · '}{meta.passage || 'No passage yet'}{dirty ? ' · not saved' : ''}</span>
         </div>
+        {peers.length > 0 && <WhoIsHere peers={peers} />}
+        {shared && <span className="shared-badge" title={`Shared by ${shared.ownerName}: your changes save to their study`}><Icon name="share" size={12} /> {shared.ownerName}’s</span>}
         {!showText && <button type="button" className="btn" onClick={() => setShowText(true)}><Icon name="bible" size={14} /> <span className="sb-btn-label">Show the passage</span></button>}
         <button type="button" className="btn btn-primary" disabled={busy || !dirty} onClick={() => save()}>{busy ? 'Saving…' : 'Save to note'}</button>
         <button type="button" className="icon-btn" onClick={leave} aria-label="Close the study builder"><Icon name="x" /></button>

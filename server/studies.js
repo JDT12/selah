@@ -1,4 +1,5 @@
 import { db, tx, unlinkStorage } from './db.js';
+import { liveSave, liveSaved } from './coedit.js';
 import { config } from './config.js';
 import { escapeHtml, htmlToText } from './html.js';
 import { addMinutes, fmtDateTime, toDate, today } from './recurrence.js';
@@ -768,7 +769,9 @@ export default async function studyRoutes(app) {
     if (!now) throw httpError(404, 'Note not found');
     // Without html only the session's builder data is saved (where the builder was left, say).
     const writing = typeof b.html === 'string';
-    if (writing && typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
+    // 14.3: a save from a builder co-editing the note live (coedit.js) is never a conflict.
+    const live = writing && b.live != null && liveSave(noteId, req.headers['x-client-id'], b.live, 'builder');
+    if (writing && !live && typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
       reply.code(409);
       return { error: 'The lesson changed while the builder was open', conflict: true, note: now };
     }
@@ -777,6 +780,7 @@ export default async function studyRoutes(app) {
         if (b.html !== now.html) snapshot(noteId, { reason: 'Before the lesson builder saved', force: true });
         const title = typeof b.title === 'string' && b.title.trim() ? b.title.trim().slice(0, 500) : now.title;
         db.prepare('UPDATE notes SET title = ?, html = ?, text = ?, updated_at = ? WHERE id = ?').run(title, b.html, htmlToText(b.html), Date.now(), noteId);
+        if (live) liveSaved(noteId, 'builder');
       }
       const found = db.prepare("SELECT id FROM study_items WHERE note_id = ? AND kind = 'session' ORDER BY id LIMIT 1").get(noteId);
       if (found) {

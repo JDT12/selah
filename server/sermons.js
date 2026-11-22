@@ -1,4 +1,5 @@
 import { db, tx } from './db.js';
+import { liveSave, liveSaved } from './coedit.js';
 import { htmlToText } from './html.js';
 import { setNoteTags } from './tags.js';
 import { snapshot } from './links.js';
@@ -420,7 +421,9 @@ export default async function sermonRoutes(app) {
     const b = req.body ?? {};
     if (typeof b.html !== 'string') throw httpError(400, 'Nothing to write');
     const now = db.prepare('SELECT title, html, updated_at FROM notes WHERE id = ?').get(s.note_id);
-    if (typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
+    // 14.3: a save from a builder co-editing the note live (coedit.js) is never a conflict.
+    const live = b.live != null && liveSave(s.note_id, req.headers['x-client-id'], b.live, 'builder');
+    if (!live && typeof b.base_updated_at === 'number' && now.updated_at > b.base_updated_at && !b.overwrite) {
       reply.code(409);
       return { error: 'The sermon note changed while the builder was open', conflict: true, note: now };
     }
@@ -430,6 +433,7 @@ export default async function sermonRoutes(app) {
       db.prepare('UPDATE notes SET title = ?, html = ?, text = ?, updated_at = ? WHERE id = ?').run(title, b.html, htmlToText(b.html), Date.now(), s.note_id);
       if (title !== now.title) db.prepare("UPDATE study_items SET title = ? WHERE note_id = ? AND kind = 'session'").run(title.slice(0, 300), s.note_id);
       db.prepare('UPDATE sermons SET updated_at = ? WHERE id = ?').run(Date.now(), s.id);
+      if (live) liveSaved(s.note_id, 'builder');
       return db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(s.note_id);
     });
   });

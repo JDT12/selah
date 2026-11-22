@@ -1,18 +1,19 @@
 // Live updates from the server (see server/events.js). Each window has an id, sent with every request, so it can
 // tell its own changes apart. Messages are passed on as a 'noteapp:live' window event, and 'noteapp:live-reconnect'
 // after the stream comes back (the app then catches up on anything it missed).
-export const clientId = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`);
+export const clientId = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 let source = null;
 export function startLive() {
   if (source || typeof EventSource === 'undefined') return;
   let dropped = false;
-  source = new EventSource('/api/events');
+  // ?client= gives this window its own messages too (14.3 live co-editing, coedit.js).
+  source = new EventSource(`/api/events?client=${encodeURIComponent(clientId)}`);
   source.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
       // The phone remote's messages (where a presentation is, a button pressed) aren't changes to fetch.
-      window.dispatchEvent(new CustomEvent(data.slides ? 'noteapp:slides' : 'noteapp:live', { detail: data }));
+      window.dispatchEvent(new CustomEvent(data.coedit ? 'noteapp:coedit' : data.slides ? 'noteapp:slides' : 'noteapp:live', { detail: data }));
     } catch { /* bad message */ }
   };
   // 13.0: 'noteapp:live-down' as soon as it drops (the phone remote says so), then 'noteapp:live-reconnect' when it's back.

@@ -6,7 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import Fastify from 'fastify';
 import {
   allowed, areContacts, clip, db, dropShare, emit, eventsFor, getSetting, hides, httpError, json, listed, log, nameOf, pair,
-  peopleOf, setSetting, shareFiles, shareRow, sharesWith, sha256, slugForKey, tenant, tx,
+  peopleOf, ROLES, roleOf, setSetting, shareFiles, shareRow, sharesWith, sha256, slugForKey, tenant, tx,
 } from './store.js';
 import { htmlToText } from '../html.js';
 
@@ -85,7 +85,7 @@ function endFor(slug) {
 const unseenWhere = "NOT EXISTS (SELECT 1 FROM comment_seen s WHERE s.comment_id = c.id AND s.slug = ?) AND c.author != ?";
 
 function sharedWithMe(me) {
-  return db.prepare(`SELECT s.*, p.seen_at, p.added_at,
+  return db.prepare(`SELECT s.*, p.seen_at, p.added_at, p.role,
       (SELECT COUNT(*) FROM notes n WHERE n.share_id = s.id) AS notes,
       (SELECT COUNT(*) FROM comments c WHERE c.share_id = s.id AND c.peer = ? AND ${unseenWhere}) AS replies
     FROM shares s JOIN share_people p ON p.share_id = s.id AND p.slug = ?
@@ -93,7 +93,7 @@ function sharedWithMe(me) {
       AND NOT EXISTS (SELECT 1 FROM hides h WHERE h.slug = ? AND h.hides = s.owner)
     ORDER BY s.updated_at DESC`).all(me, me, me, me, me).map((s) => ({
     id: s.id, owner: s.owner, ownerName: nameOf(s.owner), kind: s.kind, title: s.title, allowCopy: !!s.allow_copy,
-    allowComments: !!s.allow_comments, project: json(s.project, null), receivedAt: s.added_at, updatedAt: s.updated_at,
+    allowComments: !!s.allow_comments, project: json(s.project, null), receivedAt: s.added_at, updatedAt: s.updated_at, role: s.role ?? 'read',
     unseen: !s.seen_at || s.seen_at < s.updated_at, isNew: !s.seen_at, notes: s.notes, replies: s.replies,
   }));
 }
@@ -150,13 +150,20 @@ function saveShare(me, id, b) {
   const old = shareRow(id);
   if (old && old.owner !== me) throw httpError(403, 'Not your share.');
   const title = clip(b.title, 300);
-  const wanted = [...new Set((Array.isArray(b.people) ? b.people : []).map(String))].filter((p) => SLUG.test(p) && p !== me);
+  // 14.3: people are slugs, or { slug, role } with role read, edit or full.
+  const roles = new Map();
+  for (const p of Array.isArray(b.people) ? b.people : []) {
+    const slug = String(typeof p === 'object' && p ? p.slug : p);
+    roles.set(slug, typeof p === 'object' && ROLES.includes(p?.role) ? p.role : 'read');
+  }
+  const wanted = [...roles.keys()].filter((p) => SLUG.test(p) && p !== me);
   const ok = wanted.filter((p) => areContacts(me, p) && allowed(p));
   const refused = wanted.filter((p) => !ok.includes(p));
   const list = (Array.isArray(b.notes) ? b.notes : []).slice(0, MAX_NOTES);
   const dir = shareFiles(id);
   const now = Date.now();
   const before = old ? peopleOf(id) : [];
+  const rolesBefore = new Map(before.map((p) => [p, roleOf(p, id)]));
   let visible = !old;
   tx(() => {
     const project = b.project ? JSON.stringify({ kind: clip(b.project.kind, 20), description: clip(b.project.description, 2000) }) : null;
@@ -194,7 +201,10 @@ function saveShare(me, id, b) {
     if (was.size) visible = true; // notes taken out
     if (visible && old) db.prepare('UPDATE shares SET updated_at = ? WHERE id = ?').run(now, id);
     db.prepare(`DELETE FROM share_people WHERE share_id = ? AND slug NOT IN (${ok.map(() => '?').join(', ') || "''"})`).run(id, ...ok);
-    for (const p of ok) db.prepare('INSERT OR IGNORE INTO share_people (share_id, slug, added_at) VALUES (?, ?, ?)').run(id, p, now);
+    for (const p of ok) {
+      db.prepare('INSERT OR IGNORE INTO share_people (share_id, slug, added_at, role) VALUES (?, ?, ?, ?)').run(id, p, now, roles.get(p));
+      db.prepare('UPDATE share_people SET role = ? WHERE share_id = ? AND slug = ?').run(roles.get(p), id, p);
+    }
     // Attachments no note uses any more go.
     if (fs.existsSync(dir)) for (const f of fs.readdirSync(dir)) if (!keep.has(f) && !f.endsWith('.part')) fs.rmSync(path.join(dir, f), { force: true });
   });
@@ -207,7 +217,7 @@ function saveShare(me, id, b) {
     if (!before.includes(p)) {
       emitTo(p, me, { type: 'share-new', id, from: me, name: nameOf(me), title });
       log('shared', me, p, title, kind);
-    } else if (visible) emitTo(p, me, { type: 'share-updated', id, from: me, name: nameOf(me), title });
+    } else if (visible || rolesBefore.get(p) !== roles.get(p)) emitTo(p, me, { type: 'share-updated', id, from: me, name: nameOf(me), title, role: roles.get(p) });
   }
   if (refused.length) {
     emit(me, { type: 'share-error', error: `“${title}” couldn’t be shared with ${refused.map(nameOf).join(', ')}: sharing is off for ${refused.length === 1 ? 'them' : 'some of them'}, or they’re hidden from others.` });
@@ -402,6 +412,68 @@ api.get('/v1/shared/:id', async (req) => {
     share: sharedWithMe(me).find((x) => x.id === s.id),
     notes: notes.map((n) => ({ key: n.note_key, grp: n.grp, title: n.title, snippet: n.snippet, work: json(n.work, null), updatedAt: n.updated_at, comments: counts.get(n.note_key) ?? 0 })),
   };
+});
+
+// ----- live co-editing (14.3) -----
+// The owner's Selah keeps the live room of each shared note (server/coedit.js). Someone it's shared with reaches it
+// through here: their Selah sends what they do (join, sync, save, leave; with Full control also add and delete), the
+// hub checks their role and passes it to the owner's Selah as a 'live' event, and waits for its answer. What the
+// room sends them comes back from the owner's Selah to /v1/shares/:id/live/send and goes to their Selah as
+// 'live-msg' events.
+const LIVE_OPS = new Set(['join', 'sync', 'leave', 'save', 'add', 'delete', 'builder']);
+const CLIENT = /^[\w-]{8,64}$/;
+const pendingLive = new Map(); // reqId → { resolve, reject, timer, owner }
+const LIVE_WAIT = 15_000;
+
+api.post('/v1/shared/:id/live', async (req) => {
+  const me = req.me;
+  mustSharing(me);
+  const s = mustIncoming(me, req.params.id);
+  const b = req.body ?? {};
+  const op = String(b.op);
+  if (!LIVE_OPS.has(op)) throw httpError(400, 'Bad request');
+  const client = String(b.client ?? '');
+  if (!CLIENT.test(client)) throw httpError(400, 'Bad window');
+  const role = roleOf(me, s.id) ?? 'read';
+  const writes = op === 'save' || op === 'builder' || (op === 'sync' && b.body?.update);
+  if (writes && role === 'read') throw httpError(403, `${nameOf(s.owner)} shared this for reading only.`);
+  if ((op === 'add' || op === 'delete') && role !== 'full') throw httpError(403, `Only ${nameOf(s.owner)} can add or take out notes here.`);
+  if (op !== 'add') noteOf(s, b.key);
+  if (!allowed(s.owner)) throw httpError(503, `${nameOf(s.owner)}’s Selah can’t be reached right now.`);
+  const reqId = uid();
+  const msg = { type: 'live', at: Date.now(), reqId, shareId: s.id, key: Number(b.key) || null, from: me, name: nameOf(me), client, op, role,
+    device: clip(b.device, 80), body: b.body ?? {} };
+  if (op === 'leave') { emit(s.owner, msg); return { ok: true }; }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pendingLive.delete(reqId); reject(httpError(504, `${nameOf(s.owner)}’s Selah didn’t answer.`)); }, LIVE_WAIT);
+    pendingLive.set(reqId, { resolve, reject, timer, owner: s.owner });
+    emit(s.owner, msg);
+  });
+});
+
+// The owner's Selah answers a live request.
+api.post('/v1/shares/:id/live/reply', async (req) => {
+  const s = mustMine(req.me, req.params.id);
+  const b = req.body ?? {};
+  const p = pendingLive.get(String(b.reqId));
+  if (!p || p.owner !== s.owner) return { ok: false };
+  pendingLive.delete(String(b.reqId));
+  clearTimeout(p.timer);
+  if (b.error) p.reject(httpError(Number(b.status) >= 400 && Number(b.status) < 500 ? Number(b.status) : 409, clip(b.error, 300)));
+  else p.resolve(b.body ?? {});
+  return { ok: true };
+});
+
+// The owner's Selah sends the room's messages to people on other Selahs: [{ slug, client, msg }].
+api.post('/v1/shares/:id/live/send', async (req) => {
+  const s = mustMine(req.me, req.params.id);
+  const list = Array.isArray(req.body?.messages) ? req.body.messages.slice(0, 200) : [];
+  for (const m of list) {
+    const slug = String(m.slug ?? '');
+    if (!sharesWith(slug, s.id) || !CLIENT.test(String(m.client ?? ''))) continue;
+    emit(slug, { type: 'live-msg', shareId: s.id, client: String(m.client), msg: m.msg ?? {} });
+  }
+  return { ok: true };
 });
 
 api.post('/v1/shared/:id/seen', async (req) => {
