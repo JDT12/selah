@@ -4,6 +4,8 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.3.0] - 2026-11-22
+
 Selah 14.3 (in progress): live co-editing.
 
 - **Attendance follows a series**: a class or service can be taught from a lesson or sermon series

@@ -5,7 +5,7 @@
 export const WHATS_NEW = [
   {
     version: '14.3.0',
-    date: '',
+    date: '2026-11-22',
     title: 'Write together, live',
     items: [
       'A note open in more than one place (your computer, the web, your tablet) now changes everywhere as you type. No more “This note changed somewhere else.”',
