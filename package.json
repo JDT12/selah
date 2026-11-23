@@ -1,6 +1,6 @@
 {
   "name": "note-app",
-  "version": "14.4.0-beta.2",
+  "version": "14.5.0-beta.1",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -19,7 +19,8 @@
     "admin": "node scripts/admin.js",
     "install-caddy": "bash scripts/install-caddy.sh",
     "cloud-export": "node scripts/cloud-export.js",
-    "test:devices": "node scripts/test-devices.mjs"
+    "test:devices": "node scripts/test-devices.mjs",
+    "test:lesson-book": "node scripts/test-lesson-book.mjs"
   },
   "engines": {
     "node": ">=24"

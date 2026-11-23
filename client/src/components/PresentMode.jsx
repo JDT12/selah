@@ -247,7 +247,7 @@ export function handoutSections(html) {
   return [...doc.body.children].filter((el) => el.tagName === top).map((el) => el.textContent.trim());
 }
 
-function handoutHtml(note, { blanks, answers, lines, space, mainPoints, skip = [] }) {
+export function handoutHtml(note, { blanks, answers, lines, space, mainPoints, skip = [] }) {
   const doc = new DOMParser().parseFromString(`<body>${note.html}</body>`, 'text/html');
   // An outline's main points only: the points under them are for the class to fill in.
   if (mainPoints) doc.querySelectorAll('li > ol, li > ul').forEach((l) => l.remove());

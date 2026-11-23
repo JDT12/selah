@@ -4,6 +4,19 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+Selah 14.5: the curriculum builder.
+
+- **Lesson books**: a lesson or sermon series (Desk → the series → **Lesson book…**) made into a printed resource:
+  cover (title, subtitle, author, the church's name, color and logo), contents, an introduction and a section per
+  lesson built from the lesson's own note, in two editions from the same lessons. The **teacher guide** shows the
+  whole lesson with highlighted words as underlined answers, leader notes and, optionally, the student pages to copy
+  at the back; the **student book** turns highlighted words into blanks and leaves room to write after questions and
+  sections. Per lesson: include or leave out, leader notes, discussion questions. Letter or half-letter booklet.
+  **Print or PDF** (page numbers, a page per section), **Word** (`docx/word.js`), **Package** (a `.selahbook` file
+  that another Selah imports as a new series with its lessons and the book: the series menu → Import a lesson book),
+  and **Share…** on Selah Ministry (the book is a read-only note holding the teacher guide). `server/curricula.js`,
+  `client/src/lessonBook.js`, `CurriculumBuilder.jsx`; `npm run test:lesson-book`.
+
 Selah 14.4: offline use and reminders.
 
 - **Keep offline**: any note, sermon or lesson can be pinned from its ⋯ menu (on any device; `pref.offlinePins`).
