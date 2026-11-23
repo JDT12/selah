@@ -331,6 +331,13 @@ export const api = {
   remoteQr: () => request('GET', '/api/slides/remote-qr'),
   // 11.0: the church brand and the slide media library.
   slideBrand: () => request('GET', '/api/slides/brand'),
+  // 14.5: lesson books (server/curricula.js)
+  curricula: (studyId) => request('GET', `/api/curricula${studyId ? `?study_id=${studyId}` : ''}`),
+  createCurriculum: (body) => request('POST', '/api/curricula', body),
+  curriculum: (id) => request('GET', `/api/curricula/${id}`),
+  saveCurriculum: (id, body) => request('PUT', `/api/curricula/${id}`, body),
+  deleteCurriculum: (id) => request('DELETE', `/api/curricula/${id}`),
+  importCurriculum: (pkg) => request('POST', '/api/curricula/import', pkg),
   saveSlideBrand: (patch) => request('PUT', '/api/slides/brand', patch),
   uploadBrandLogo(file) {
     const fd = new FormData();

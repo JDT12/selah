@@ -4,6 +4,29 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+## [14.5.0] - 2026-11-22
+
+Selah 14.5: the curriculum builder.
+
+- **Lesson books**: a lesson or sermon series (Desk → the series → **Lesson book…**) made into a printed resource:
+  cover (title, subtitle, author, the church's name, color and logo), contents, an introduction and a section per
+  lesson built from the lesson's own note, in two editions from the same lessons. The **teacher guide** shows the
+  whole lesson with highlighted words as underlined answers, leader notes and, optionally, the student pages to copy
+  at the back; the **student book** turns highlighted words into blanks and leaves room to write after questions and
+  sections. Per lesson: include or leave out, leader notes, discussion questions. Letter or half-letter booklet.
+  **Print or PDF** (page numbers, a page per section), **Word** (`docx/word.js`), **Package** (a `.selahbook` file
+  that another Selah imports as a new series with its lessons and the book: the series menu → Import a lesson book),
+  and **Share…** on Selah Ministry (the book is a read-only note holding the teacher guide). `server/curricula.js`,
+  `client/src/lessonBook.js`, `CurriculumBuilder.jsx`; `npm run test:lesson-book`.
+- **Edited in place** (after the second beta): the book is one document edited on the page with the note toolbar (headings, lists, tables, callouts, pictures, quotes, Scripture, and / commands). The sidebar has **Insert** (New page, Blank, Teacher only, Student only, Leader note, Discussion questions, Answer box, Writing lines with a count, and ready-made pages: welcome, how to use, prayer requests, notes, memory verse card, answer key), **Lessons** (insert a lesson as a copy; **Update from lesson** when it has changed since), **Bank** (the lessons' parts, points and questions and your own pieces, inserted at the cursor or dragged in; keep a selection) and **Layout**. Both editions come from the one document; the cover's words are edited on the page and the contents come from its Heading 1s. Books from the earlier betas are turned into a document when opened. New editor nodes in `client/src/editor/BookNodes.js`.
+- Lesson book customizing (after the first beta): **sections in any order** (drag or arrows), **custom pages**
+  (welcome, how to use, prayer requests, notes, answer key, or blank; in both books or one, with lines to write on),
+  **page breaks** (each lesson on a new page, or run on with breaks where you put them), **Blank** in the builder's
+  boxes (blanks in the student book, answers in the teacher guide), **parts of a lesson** per edition, **added
+  material** after a lesson, **fonts and text size**, a **header** (the book's title) and **footer** (page numbers,
+  church name, which book), and a **Bank** tab: the lessons' points, questions and whole parts, plus pieces you write,
+  inserted into the lesson or page last opened. RichBox takes `blanks` and `headings`.
+
 ## [14.4.0] - 2026-11-22
 
 Selah 14.4: offline use and reminders.

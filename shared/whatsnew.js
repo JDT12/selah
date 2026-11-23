@@ -4,6 +4,18 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.5.0',
+    date: '2026-11-22',
+    title: 'Lesson books',
+    items: [
+      'Turn a lesson or sermon series into a printed lesson book: open the series on Desk and choose Lesson book…. Cover, contents, an introduction and a section for each lesson are made from your lessons.',
+      'One book, two editions: a teacher guide with the answers and your leader notes, and a student book with blanks and room to write. Highlight words in a lesson to make them blanks.',
+      'Edit the book right on the page, like a note: add new pages, writing lines, blanks, answer boxes, leader notes and ready-made pages (welcome, prayer requests, an answer key…) where you want them, and mark any part Teacher only or Student only.',
+      'The bank gathers each lesson’s points, questions and parts, plus pieces you keep, to insert or drag into the book. When a lesson changes, Update from lesson brings the book up to date.',
+      'Print it (or save a PDF) in letter size or as a half-letter booklet, save it as Word, or make a package another church can import into Selah and teach.',
+    ],
+  },
+  {
     version: '14.4.0',
     date: '2026-11-22',
     title: 'Ready with no connection',
