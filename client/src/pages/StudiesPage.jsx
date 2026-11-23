@@ -23,7 +23,6 @@ import { parse } from '../../../shared/scripture.js';
 import { openShare } from '../components/SharingDialogs.jsx';
 import { canShare } from '../mode.js';
 import { confirmNew } from '../components/ExistingWork.jsx';
-import { importLessonBook, openLessonBook } from '../components/CurriculumBuilder.jsx';
 
 const plural = (n, w, many = `${w}s`) => `${n} ${n === 1 ? w : many}`;
 
@@ -305,8 +304,6 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
         </div>
         <div className="page-actions">
           {s.kind !== 'class' && <button className="btn" onClick={plan}><Icon name="calendar" size={15} /> {{ self: 'Plan the reading…', teaching: 'Plan a series…', writing: 'Plan the writing…', preaching: 'Plan the series…' }[s.kind]}</button>}
-          {/* 14.5: the series as a printed lesson book (CurriculumBuilder.jsx) */}
-          {(s.kind === 'teaching' || s.kind === 'preaching') && device.full && <button className="btn" onClick={() => openLessonBook(dialog, s)}><Icon name="file" size={15} /> Lesson book…</button>}
           <button className="btn" onClick={edit}>Edit…</button>
           <Menu align="right" trigger={({ toggle: t }) => <button className="icon-btn" onClick={t} aria-label="More"><Icon name="more" /></button>} items={[
             s.status !== 'active' && { label: 'Put back under way', onClick: () => setStatus('active') },
@@ -314,7 +311,6 @@ export function StudyDetail({ id, tree, onBack, backLabel = 'Desk', onCourse, on
             s.status !== 'archived' && { label: 'Move to the archive', onClick: () => setStatus('archived') },
             { label: s.data.inTasks === false ? 'Show dated items in Tasks and Calendar' : 'Keep dated items out of Tasks and Calendar', onClick: async () => { await api.updateStudy(s.id, { data: { inTasks: s.data.inTasks === false } }); changed(); } },
             canShare() && { label: 'Share…', onClick: () => openShare(dialog, { kind: 'study', id: s.id, title: s.title }) },
-            (s.kind === 'teaching' || s.kind === 'preaching') && device.full && { label: 'Import a lesson book as a new series…', onClick: () => importLessonBook(dialog, () => onChanged?.()) },
             'sep',
             { label: 'Delete study…', danger: true, onClick: remove },
           ]} />

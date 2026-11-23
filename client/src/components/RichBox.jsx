@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { EditorContent, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Placeholder } from '@tiptap/extensions';
-import Highlight from '@tiptap/extension-highlight';
 import Icon from './Icon.jsx';
 import { useDialog } from './Dialogs.jsx';
 import { splitLogosQuote } from '../editor/LogosPaste.js';
@@ -23,9 +22,7 @@ const htmlOf = (editor) => (editor.isEmpty ? '' : editor.getHTML());
  * and links reach the note as they are. What it can hold is sermon.js's boxCanHold; anything more is edited in the
  * note. A Logos quote pastes as the quote with its citation after it, as the text areas did.
  */
-// 14.5: blanks (the lesson book's boxes): a Blank button marks words that print as blanks (student) or answers
-// (teacher); headings: headings for a custom page.
-export default function RichBox({ html, onChange, placeholder = '', rows = 3, label, blanks = false, headings = false }) {
+export default function RichBox({ html, onChange, placeholder = '', rows = 3, label }) {
   const dialog = useDialog();
   const sent = useRef(html ?? '');
   const changeRef = useRef(onChange);
@@ -34,11 +31,10 @@ export default function RichBox({ html, onChange, placeholder = '', rows = 3, la
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        heading: headings ? { levels: [2, 3] } : false, codeBlock: false, horizontalRule: false, dropcursor: false,
+        heading: false, codeBlock: false, horizontalRule: false, dropcursor: false,
         link: { openOnClick: false, autolink: true, defaultProtocol: 'https', HTMLAttributes: { rel: 'noopener noreferrer', target: '_blank' } },
       }),
       Placeholder.configure({ placeholder: placeholder.split('\n')[0] }),
-      ...(blanks ? [Highlight] : []),
     ],
     content: html ?? '',
     editorProps: {
@@ -127,15 +123,6 @@ export default function RichBox({ html, onChange, placeholder = '', rows = 3, la
         {tool('numbers', 'listOrdered', 'Numbered list', () => editor.chain().focus().toggleOrderedList().run(), editor.isActive('orderedList'))}
         <span className="rb-sep" />
         {tool('link', 'link', 'Link (Ctrl+K)', setLink, editor.isActive('link'))}
-        {headings && <><span className="rb-sep" />{tool('heading', 'text', 'Heading', () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive('heading'))}</>}
-        {blanks && (
-          <>
-            <span className="rb-sep" />
-            <button type="button" className={`rb-tool rb-blank ${editor.isActive('highlight') ? 'is-active' : ''}`} aria-pressed={editor.isActive('highlight')}
-              title="Blank: the student book shows a line to fill in, the teacher guide the answer"
-              onMouseDown={(e) => e.preventDefault()} onClick={() => editor.chain().focus().toggleHighlight().run()}>Blank</button>
-          </>
-        )}
       </div>
       <EditorContent editor={editor} />
     </div>
