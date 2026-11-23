@@ -1,140 +1,183 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { api } from '../api.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import { DOMSerializer } from '@tiptap/pm/model';
+import { api, fileUrl } from '../api.js';
 import { useDialog } from './Dialogs.jsx';
 import Icon from './Icon.jsx';
 import RichBox from './RichBox.jsx';
+import Toolbar from '../editor/Toolbar.jsx';
+import { buildExtensions } from '../editor/extensions.js';
+import { BOOK_NODES } from '../editor/BookNodes.js';
 import { canShare } from '../mode.js';
 import { openShare } from './SharingDialogs.jsx';
 import { loadBrand } from '../slideLook.js';
-import { bookSections, FONTS, lessonBookHtml, lessonBookParts, lessonParts, lessonPieces, PAGE_EDITIONS, printLessonBook, SIZES, TEXT_SIZES } from '../lessonBook.js';
+import { bookStyle, FONTS, lessonBlockHtml, lessonBookHtml, lessonBookParts, lessonPieces, PAGE_TEMPLATES, printLessonBook, SIZES, startingDoc, TEXT_SIZES } from '../lessonBook.js';
 
 const newKey = () => Math.random().toString(36).slice(2, 9);
-const PAGE_KINDS = [
-  { title: 'Welcome', html: '<p>Welcome to this study.</p>' },
-  { title: 'How to use this book', html: '<p>Each lesson has …</p>' },
-  { title: 'Prayer requests', html: '', lines: true },
-  { title: 'Notes', html: '', lines: true },
-  { title: 'Answer key', html: '', edition: 'teacher' },
-  { title: '', html: '' },
-];
 
 /**
- * 14.5: the lesson book builder. A series' lessons (or sermons) made into a printed resource: cover, contents,
- * introduction, the lessons and pages you add (in any order, with page breaks), in a teacher guide and a student book.
- * The Bank tab gathers the book's lessons' points, questions and parts, plus pieces you write, to insert into a lesson
- * or page. Settings save as you go (server/curricula.js); the teacher guide is kept as the book's note.
+ * 14.5: the lesson book builder. The book is edited on the page itself, like a note, with the note's toolbar; the
+ * sidebar holds the book's own elements (new page, writing lines, Blank, Teacher only / Student only…), ready-made
+ * pages, the series' lessons (copied in, with Update from lesson when a lesson has changed), the bank (the lessons'
+ * parts, points and questions, and pieces you keep) and the page layout. Teacher guide and Student book show each
+ * edition as it prints. Saves as you go (server/curricula.js); the teacher guide is kept as the book's note.
  */
 function CurriculumBuilder({ id, close }) {
   const dialog = useDialog();
   const [book, setBook] = useState(null);
-  const [brand, setBrand] = useState({});
-  const [edition, setEdition] = useState('teacher');
-  const [tab, setTab] = useState('book');
-  const [open, setOpen] = useState('cover'); // cover, layout, intro, or a section key
-  const [target, setTarget] = useState(null); // where Bank inserts: a lesson or page section key
-  const [saved, setSaved] = useState('');
-  const [draft, setDraft] = useState('');
-  const [draftN, setDraftN] = useState(0);
-  const [kind, setKind] = useState('all');
-  const [dragging, setDragging] = useState(null);
-  const timer = useRef(null);
-  const latest = useRef(null);
-  const brandRef = useRef({});
-
   useEffect(() => {
     api.curriculum(id).then(setBook).catch((e) => { dialog.toast(e.message, 'error'); close(); });
-    loadBrand().then((b) => { brandRef.current = b; setBrand(b); }).catch(() => {});
   }, [id]);
+  if (!book) return <div className="cb"><p className="muted cb-loading">Opening the lesson book…</p></div>;
+  return <BookEditor initial={book} close={close} />;
+}
 
-  const save = async () => {
+function BookEditor({ initial, close }) {
+  const dialog = useDialog();
+  const [book, setBook] = useState(() => ({ ...initial, data: { ...initial.data, doc: initial.data.doc ?? startingDoc(initial) } }));
+  const [brand, setBrand] = useState({});
+  const [view, setView] = useState('edit'); // edit, teacher, student
+  const [tab, setTab] = useState('insert');
+  const [saved, setSaved] = useState('');
+  const [lines, setLines] = useState(4);
+  const [kind, setKind] = useState('all');
+  const [draft, setDraft] = useState('');
+  const [draftN, setDraftN] = useState(0);
+  const [, setTick] = useState(0); // the sidebar follows the cursor (Teacher only on/off…)
+  const timer = useRef(null);
+  const latest = useRef(book);
+  const brandRef = useRef({});
+
+  useEffect(() => { loadBrand().then((b) => { brandRef.current = b; setBrand(b); }).catch(() => {}); }, []);
+
+  const save = useCallback(async () => {
     clearTimeout(timer.current);
     timer.current = null;
     const b = latest.current;
-    if (!b) return;
     try {
       await api.saveCurriculum(b.id, { data: b.data, html: lessonBookHtml(b, 'teacher', brandRef.current) });
       setSaved('Saved');
     } catch (e) { setSaved(''); dialog.toast(`Couldn’t save: ${e.message}`, 'error'); }
-  };
-  useEffect(() => () => { if (timer.current) save(); }, []);
-
-  const change = (fn) => setBook((b) => {
+  }, [dialog]);
+  useEffect(() => () => { if (timer.current) save(); }, [save]);
+  const change = useCallback((fn) => setBook((b) => {
     const next = { ...b, data: fn(b.data) };
     latest.current = next;
     setSaved('Saving…');
     clearTimeout(timer.current);
     timer.current = setTimeout(save, 900);
     return next;
-  });
+  }), [save]);
   const set = (k, v) => change((d) => ({ ...d, [k]: v }));
-  const setLesson = (lid, k, v) => change((d) => ({ ...d, lessons: { ...(d.lessons ?? {}), [lid]: { ...(d.lessons?.[lid] ?? {}), [k]: v } } }));
-  const setPage = (key, k, v) => change((d) => ({ ...d, pages: { ...(d.pages ?? {}), [key]: { ...(d.pages?.[key] ?? {}), [k]: v } } }));
 
-  const sections = useMemo(() => (book ? bookSections(book) : []), [book]);
-  const pieces = useMemo(() => (book ? lessonPieces(book) : []), [book?.lessons]);
-  const preview = useMemo(() => (book ? lessonBookHtml(book, edition, brand) : ''), [book, edition, brand]);
-  if (!book) return <div className="cb"><p className="muted cb-loading">Opening the lesson book…</p></div>;
-  const d = book.data;
-  const keys = sections.map((s) => s.key);
-  const included = sections.filter((s) => s.type === 'lesson' && !s.skip).length;
-
-  // ---- sections: order, pages, breaks ----
-  const setOrder = (list) => set('order', list);
-  const move = (key, by) => {
-    const list = [...keys];
-    const i = list.indexOf(key);
-    const j = i + by;
-    if (i < 0 || j < 0 || j >= list.length) return;
-    [list[i], list[j]] = [list[j], list[i]];
-    setOrder(list);
-  };
-  const dropOn = (key) => {
-    if (!dragging || dragging === key) return;
-    const list = keys.filter((k) => k !== dragging);
-    list.splice(list.indexOf(key), 0, dragging);
-    setOrder(list);
-    setDragging(null);
-  };
-  const insertAfter = (newKeyStr) => {
-    const list = [...keys];
-    // After the section open now, else the one last opened, else at the end.
-    const ref = list.includes(open) ? open : list.includes(target) ? target : null;
-    const at = ref ? list.indexOf(ref) + 1 : list.length;
-    list.splice(at, 0, newKeyStr);
-    return list;
-  };
-  const addPage = (preset) => {
-    const key = newKey();
-    change((dd) => ({ ...dd, pages: { ...(dd.pages ?? {}), [key]: { title: preset.title, html: preset.html, edition: preset.edition ?? 'both', lines: !!preset.lines } }, order: insertAfter(`P:${key}`) }));
-    setOpen(`P:${key}`);
-    setTarget(`P:${key}`);
-  };
-  const addBreak = () => setOrder(insertAfter(`B:${newKey()}`));
-  const removeSection = (key) => change((dd) => {
-    const next = { ...dd, order: keys.filter((k) => k !== key) };
-    if (key.startsWith('P:')) { const pages = { ...(dd.pages ?? {}) }; delete pages[key.slice(2)]; next.pages = pages; }
-    return next;
+  // Pictures go to the book's note, as in any note.
+  const editorRef = useRef(null);
+  const upload = useCallback(async (files, pos) => {
+    const editor = editorRef.current;
+    if (!editor || !initial.note_id) return;
+    for (const file of files) {
+      try {
+        const a = await api.upload(initial.note_id, file, () => {});
+        const node = a.mime.startsWith('image/') && a.mime !== 'image/svg+xml'
+          ? { type: 'image', attrs: { src: fileUrl(a.id), alt: a.filename } }
+          : { type: 'attachment', attrs: { id: a.id, filename: a.filename, mime: a.mime, size: a.size } };
+        if (pos != null) { editor.chain().focus().insertContentAt(pos, node).run(); pos = null; } else editor.chain().focus().insertContent(node).run();
+      } catch (e) { dialog.toast(`${file.name}: ${e.message}`, 'error'); }
+    }
+  }, [initial.note_id, dialog]);
+  const extensions = useMemo(() => [...buildExtensions({ onFiles: (f, p) => upload(f, p) }), ...BOOK_NODES], [upload]);
+  const editor = useEditor({
+    extensions,
+    content: book.data.doc,
+    editorProps: { attributes: { class: 'note-body lb-edit', 'aria-label': 'The lesson book' } },
+    onUpdate: ({ editor: e }) => change((d) => ({ ...d, doc: e.getHTML() })),
+    onSelectionUpdate: () => setTick((t) => t + 1),
   });
+  useEffect(() => { editorRef.current = editor; }, [editor]);
 
-  // ---- the bank: insert a piece into the chosen lesson or page ----
-  const targetSection = sections.find((s) => s.key === target && (s.type === 'page' || (s.type === 'lesson' && !s.skip)));
-  const targetName = targetSection ? (targetSection.type === 'lesson' ? `Lesson ${targetSection.lesson.n}: ${targetSection.lesson.title}` : (targetSection.page.title || 'Untitled page')) : null;
-  const insert = (html) => {
-    if (!targetSection) { dialog.toast('Choose a lesson or page on the Book tab first: pieces go into the one you last opened.'); return; }
-    if (targetSection.type === 'lesson') setLesson(targetSection.lesson.id, 'extra', `${targetSection.lesson.opts.extra ?? ''}${html}`);
-    else setPage(targetSection.key.slice(2), 'html', `${targetSection.page.html ?? ''}${html}`);
-    dialog.toast(`Added to ${targetName}`);
+  const d = book.data;
+  const pieces = useMemo(() => lessonPieces(book), [book.lessons]);
+  const preview = useMemo(() => (view === 'edit' ? '' : lessonBookHtml(book, view, brand)), [book, view, brand]);
+  const headings = useMemo(() => {
+    const doc = new DOMParser().parseFromString(`<body>${d.doc}</body>`, 'text/html');
+    return [...doc.querySelectorAll('h1')].map((h) => h.textContent.trim()).filter(Boolean);
+  }, [d.doc]);
+  const inBook = useMemo(() => {
+    const m = new Map();
+    const doc = new DOMParser().parseFromString(`<body>${d.doc}</body>`, 'text/html');
+    for (const s of doc.querySelectorAll('section[data-lesson]')) m.set(Number(s.getAttribute('data-lesson')), Number(s.getAttribute('data-synced')) || 0);
+    return m;
+  }, [d.doc]);
+
+  // ---- inserting ----
+  const run = (fn) => { if (!editor) return; fn(editor.chain().focus()).run(); };
+  const insertHtml = (html) => run((c) => c.insertContent(html));
+  // A block to type in (a leader note, questions): the cursor goes into its empty last paragraph, `depth` closing
+  // tags back from the end of what went in.
+  const insertInto = (html, depth) => {
+    if (!editor) return;
+    const start = editor.state.selection.from;
+    editor.chain().focus().insertContent(html).run();
+    const end = editor.state.selection.from;
+    const doc = editor.state.doc;
+    let at = null;
+    doc.nodesBetween(Math.min(start, end), Math.min(doc.content.size, Math.max(start, end) + depth), (node, pos) => { if (node.isTextblock && node.content.size === 0) at = pos + 1; });
+    if (at != null) editor.commands.setTextSelection(at);
   };
-  const addPiece = () => {
-    if (!draft.replace(/<[^>]*>/g, '').trim()) return;
-    set('bank', [{ key: newKey(), html: draft }, ...(d.bank ?? [])]);
-    setDraft('');
-    setDraftN((n) => n + 1); // a fresh box
+  // Pages, page breaks and lessons go between the book's top blocks, after the one the cursor is in (not inside a box
+  // or a list); the cursor then follows what went in.
+  const insertTop = (content) => {
+    if (!editor) return;
+    const { $from } = editor.state.selection;
+    const pos = $from.depth > 0 ? $from.after(1) : editor.state.selection.to;
+    editor.chain().focus().insertContentAt(pos, content).run();
   };
-  const openSection = (key) => { setOpen(open === key ? null : key); if (key.startsWith('L:') || key.startsWith('P:')) setTarget(key); };
+  // A writing-lines block or page break selected after it goes in would be replaced by the next insert: an empty
+  // paragraph after it takes the cursor.
+  const insertAtom = (node, top = false) => (top ? insertTop([node, { type: 'paragraph' }]) : run((c) => c.insertContent([node, { type: 'paragraph' }])));
+  const inEdition = (ed) => editor?.isActive('editionBlock', { edition: ed });
+  const toggleEdition = (ed) => {
+    if (!editor) return;
+    if (inEdition(ed)) run((c) => c.lift('editionBlock'));
+    else if (editor.isActive('editionBlock')) run((c) => c.updateAttributes('editionBlock', { edition: ed }));
+    else run((c) => c.wrapIn('editionBlock', { edition: ed }));
+  };
+  const insertLesson = (l) => {
+    const n = inBook.size + 1;
+    insertTop(`<div data-page-break></div>${lessonBlockHtml(l, n)}`);
+    setView('edit');
+  };
+  const updateLesson = async (l) => {
+    if (!editor) return;
+    if (!(await dialog.confirm({ title: `Update “${l.title}” from the lesson?`, message: 'The lesson’s text in the book is replaced with the lesson as it is now. What you changed or added inside it in the book is replaced too (Undo brings it back).', okLabel: 'Update' }))) return;
+    let at = null;
+    editor.state.doc.descendants((node, pos) => {
+      if (at == null && node.type.name === 'lessonBlock' && node.attrs.lesson === l.id) { at = { from: pos, to: pos + node.nodeSize, n: (/^Lesson (\d+):/.exec(node.firstChild?.textContent ?? '') ?? [])[1] }; return false; }
+      return at == null;
+    });
+    if (!at) return;
+    editor.chain().focus().insertContentAt({ from: at.from, to: at.to }, lessonBlockHtml(l, Number(at.n) || null)).run();
+    dialog.toast(`Updated “${l.title}”`);
+  };
+  const goTo = (lessonId) => {
+    const el = document.querySelector(`.lb-edit section[data-lesson="${lessonId}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  const addToBank = (html) => {
+    if (!html || !html.replace(/<[^>]*>/g, '').trim()) return;
+    set('bank', [{ key: newKey(), html }, ...(d.bank ?? [])]);
+  };
+  const selectionHtml = () => {
+    if (!editor || editor.state.selection.empty) return '';
+    const div = document.createElement('div');
+    div.append(DOMSerializer.fromSchema(editor.schema).serializeFragment(editor.state.selection.content().content));
+    return div.innerHTML;
+  };
+  const drag = (html) => (e) => { e.dataTransfer.setData('text/html', html); e.dataTransfer.setData('text/plain', html.replace(/<[^>]*>/g, ' ')); e.dataTransfer.effectAllowed = 'copy'; };
 
   // ---- output ----
   const finish = async () => { if (timer.current) await save(); close(); };
+  const edition = view === 'student' ? 'student' : 'teacher';
   const word = async () => {
     try {
       const { wordDocument, download, fileName } = await import('../docx/word.js');
@@ -151,105 +194,21 @@ function CurriculumBuilder({ id, close }) {
     a.click();
     a.remove();
   };
-  const share = async () => {
-    if (timer.current) await save();
-    openShare(dialog, { kind: 'note', id: book.note_id, title: d.title || 'Lesson book' });
-  };
+  const share = async () => { if (timer.current) await save(); openShare(dialog, { kind: 'note', id: book.note_id, title: d.title || 'Lesson book' }); };
   const remove = async () => {
     if (!(await dialog.confirm({ title: 'Delete this lesson book?', message: 'Its lessons stay as they are. The book’s note goes to the Trash.', okLabel: 'Delete', danger: true }))) return;
+    clearTimeout(timer.current);
+    timer.current = null;
     await api.deleteCurriculum(book.id).catch(() => {});
     close();
   };
   const foot = d.footer ?? { number: true };
-
-  const rowTools = (key, i) => (
-    <span className="cb-row-tools">
-      <button type="button" className="icon-btn" aria-label="Move up" disabled={i === 0} onClick={() => move(key, -1)}><Icon name="chevronUp" size={14} /></button>
-      <button type="button" className="icon-btn" aria-label="Move down" disabled={i === keys.length - 1} onClick={() => move(key, 1)}><Icon name="chevronDown" size={14} /></button>
-    </span>
-  );
-
-  const lessonRow = (s, i) => {
-    const l = s.lesson;
-    const o = l.opts;
-    const parts = lessonParts(l);
-    const toggleSkipPart = (ed, name, on) => {
-      const cur = new Set(o.parts?.[ed] ?? []);
-      if (on) cur.delete(name); else cur.add(name);
-      setLesson(l.id, 'parts', { ...(o.parts ?? {}), [ed]: [...cur] });
-    };
-    return (
-      <>
-        <div className="cb-row-head">
-          <input type="checkbox" checked={!s.skip} aria-label={`Include ${l.title}`} onChange={(e) => setLesson(l.id, 'skip', !e.target.checked)} />
-          <button type="button" className={`cb-sec ${open === s.key ? 'is-open' : ''}`} onClick={() => openSection(s.key)}>{s.skip ? '' : `${l.n}. `}{l.title}</button>
-          {rowTools(s.key, i)}
-        </div>
-        {open === s.key && !s.skip && (
-          <div className="cb-fields">
-            {parts.length > 0 && (
-              <fieldset className="cb-parts">
-                <legend>Parts of the lesson</legend>
-                <div className="cb-parts-grid">
-                  <span />
-                  <span className="muted">Teacher</span>
-                  <span className="muted">Student</span>
-                  {parts.map((p) => (
-                    <PartRow key={p} name={p} teacher={!(o.parts?.teacher ?? []).includes(p)} student={!(o.parts?.student ?? []).includes(p)}
-                      onTeacher={(on) => toggleSkipPart('teacher', p, on)} onStudent={(on) => toggleSkipPart('student', p, on)} />
-                  ))}
-                </div>
-              </fieldset>
-            )}
-            <span className="cb-box-label">For the leader (teacher guide only)</span>
-            <RichBox blanks html={o.leader ?? ''} onChange={(v) => setLesson(l.id, 'leader', v.html)} rows={3} label="For the leader" placeholder="Notes only the teacher guide shows: time, materials, answers to watch for…" />
-            <span className="cb-box-label">Added material (both books, after the lesson)</span>
-            <RichBox blanks headings html={o.extra ?? ''} onChange={(v) => setLesson(l.id, 'extra', v.html)} rows={3} label="Added material" placeholder="Points, readings, an activity… or insert pieces from the Bank tab." />
-            <span className="cb-box-label">Discussion questions (both books)</span>
-            <RichBox blanks html={o.questions ?? ''} onChange={(v) => setLesson(l.id, 'questions', v.html)} rows={3} label="Discussion questions" placeholder="Questions for both books; the student book leaves room to write." />
-          </div>
-        )}
-      </>
-    );
-  };
-
-  const pageRow = (s, i) => {
-    const p = s.page;
-    const pk = s.key.slice(2);
-    return (
-      <>
-        <div className="cb-row-head">
-          <span className="cb-row-icon"><Icon name="file" size={14} /></span>
-          <button type="button" className={`cb-sec ${open === s.key ? 'is-open' : ''}`} onClick={() => openSection(s.key)}>{p.title || 'Untitled page'} <span className="muted cb-row-sub">{p.edition && p.edition !== 'both' ? PAGE_EDITIONS[p.edition] : 'Page'}</span></button>
-          {rowTools(s.key, i)}
-        </div>
-        {open === s.key && (
-          <div className="cb-fields">
-            <label className="field">Title<input className="input" value={p.title ?? ''} onChange={(e) => setPage(pk, 'title', e.target.value)} /></label>
-            <label className="field">In
-              <select className="input" value={p.edition ?? 'both'} onChange={(e) => setPage(pk, 'edition', e.target.value)}>
-                {Object.entries(PAGE_EDITIONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-              </select>
-            </label>
-            <RichBox blanks headings html={p.html ?? ''} onChange={(v) => setPage(pk, 'html', v.html)} rows={5} label="Page" placeholder="Write the page, or insert pieces from the Bank tab." />
-            <label className="check-row"><input type="checkbox" checked={!!p.lines} onChange={(e) => setPage(pk, 'lines', e.target.checked)} /><span>Lines to write on at the end</span></label>
-            <button type="button" className="link-btn cb-delete" onClick={() => removeSection(s.key)}>Remove this page</button>
-          </div>
-        )}
-      </>
-    );
-  };
-
-  const breakRow = (s, i) => (
-    <div className="cb-row-head cb-break-row">
-      <span className="cb-break-line">Page break</span>
-      {rowTools(s.key, i)}
-      <button type="button" className="icon-btn" aria-label="Remove page break" onClick={() => removeSection(s.key)}><Icon name="x" size={14} /></button>
-    </div>
-  );
-
   const shownPieces = pieces.filter((p) => kind === 'all' || p.kind === kind);
-  const byLesson = [...new Set(shownPieces.map((p) => p.from))];
+  const tool = (label, icon, onClick, opts = {}) => (
+    <button type="button" className={`cb-tool ${opts.active ? 'is-on' : ''}`} onMouseDown={(e) => e.preventDefault()} onClick={onClick} title={opts.title ?? label} aria-pressed={opts.active ?? undefined}>
+      <Icon name={icon} size={15} /><span>{label}</span>
+    </button>
+  );
 
   return (
     <div className="cb" role="dialog" aria-label="Lesson book">
@@ -259,12 +218,13 @@ function CurriculumBuilder({ id, close }) {
           <strong>{d.title || 'Lesson book'}</strong>
           <span className="muted">{book.study ? `From ${book.study.title}` : ''}{saved ? ` · ${saved}` : ''}</span>
         </div>
-        <div className="cb-edition" role="tablist" aria-label="Edition">
-          <button type="button" role="tab" aria-selected={edition === 'teacher'} className={edition === 'teacher' ? 'is-on' : ''} onClick={() => setEdition('teacher')}>Teacher guide</button>
-          <button type="button" role="tab" aria-selected={edition === 'student'} className={edition === 'student' ? 'is-on' : ''} onClick={() => setEdition('student')}>Student book</button>
+        <div className="cb-edition" role="tablist" aria-label="View">
+          {[['edit', 'Edit'], ['teacher', 'Teacher guide'], ['student', 'Student book']].map(([k, label]) => (
+            <button key={k} type="button" role="tab" aria-selected={view === k} className={view === k ? 'is-on' : ''} onClick={() => setView(k)}>{label}</button>
+          ))}
         </div>
         <div className="cb-actions">
-          <button type="button" className="btn btn-small btn-primary" onClick={() => printLessonBook(book, edition, brand)}><Icon name="file" size={14} /> Print or PDF</button>
+          <button type="button" className="btn btn-small btn-primary" onClick={() => printLessonBook(book, edition, brand)} title={`Prints the ${edition === 'student' ? 'student book' : 'teacher guide'}`}><Icon name="file" size={14} /> Print or PDF</button>
           <button type="button" className="btn btn-small" onClick={word}>Word</button>
           <button type="button" className="btn btn-small" onClick={packageFile} title="A file another church can import into Selah to teach it">Package</button>
           {canShare() && book.note_id && <button type="button" className="btn btn-small" onClick={share}>Share…</button>}
@@ -273,99 +233,72 @@ function CurriculumBuilder({ id, close }) {
       <div className="cb-main">
         <aside className="cb-side">
           <div className="cb-tabs" role="tablist" aria-label="Builder">
-            <button type="button" role="tab" aria-selected={tab === 'book'} className={tab === 'book' ? 'is-on' : ''} onClick={() => setTab('book')}>Book</button>
-            <button type="button" role="tab" aria-selected={tab === 'bank'} className={tab === 'bank' ? 'is-on' : ''} onClick={() => setTab('bank')}>Bank <span className="muted">{pieces.length + (d.bank?.length ?? 0)}</span></button>
+            {[['insert', 'Insert'], ['lessons', 'Lessons'], ['bank', 'Bank'], ['layout', 'Layout']].map(([k, label]) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'is-on' : ''} onClick={() => setTab(k)}>{label}</button>
+            ))}
           </div>
 
-          {tab === 'book' && (
-            <>
-              <button type="button" className={`cb-sec ${open === 'cover' ? 'is-open' : ''}`} onClick={() => setOpen(open === 'cover' ? null : 'cover')}>Cover</button>
-              {open === 'cover' && (
-                <div className="cb-fields">
-                  <label className="field">Title<input className="input" value={d.title ?? ''} onChange={(e) => set('title', e.target.value)} /></label>
-                  <label className="field">Subtitle<input className="input" value={d.subtitle ?? ''} onChange={(e) => set('subtitle', e.target.value)} /></label>
-                  <label className="field">Written by<input className="input" value={d.author ?? ''} placeholder={brand.name ? `(with ${brand.name})` : ''} onChange={(e) => set('author', e.target.value)} /></label>
-                </div>
-              )}
-              <button type="button" className={`cb-sec ${open === 'layout' ? 'is-open' : ''}`} onClick={() => setOpen(open === 'layout' ? null : 'layout')}>Page layout</button>
-              {open === 'layout' && (
-                <div className="cb-fields">
-                  <label className="field">Page size
-                    <select className="input" value={d.size === 'half' ? 'half' : 'letter'} onChange={(e) => set('size', e.target.value)}>
-                      {Object.entries(SIZES).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
-                    </select>
-                  </label>
-                  <div className="cb-two">
-                    <label className="field">Font
-                      <select className="input" value={FONTS[d.font] ? d.font : 'serif'} onChange={(e) => set('font', e.target.value)}>
-                        {Object.entries(FONTS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
-                      </select>
-                    </label>
-                    <label className="field">Text size
-                      <select className="input" value={TEXT_SIZES.includes(Number(d.textSize)) ? d.textSize : ''} onChange={(e) => set('textSize', e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">Usual</option>
-                        {TEXT_SIZES.map((n) => <option key={n} value={n}>{n} pt</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <label className="check-row"><input type="checkbox" checked={d.newPage !== false} onChange={(e) => set('newPage', e.target.checked)} /><span>Each lesson and page starts a new page<span className="muted">Or let them run on, and add page breaks where you want them.</span></span></label>
-                  <label className="field">Header
-                    <select className="input" value={d.header === 'title' ? 'title' : 'none'} onChange={(e) => set('header', e.target.value)}>
-                      <option value="none">None</option>
-                      <option value="title">The book’s title</option>
-                    </select>
-                  </label>
-                  <fieldset className="cb-foot">
-                    <legend>Footer</legend>
-                    <label className="check-row"><input type="checkbox" checked={foot.number !== false} onChange={(e) => set('footer', { ...foot, number: e.target.checked })} /><span>Page numbers</span></label>
-                    <label className="check-row"><input type="checkbox" checked={!!foot.church} onChange={(e) => set('footer', { ...foot, church: e.target.checked })} /><span>Church name{brand.name ? ` (${brand.name})` : ''}</span></label>
-                    <label className="check-row"><input type="checkbox" checked={!!foot.edition} onChange={(e) => set('footer', { ...foot, edition: e.target.checked })} /><span>Which book (Teacher guide, Student book)</span></label>
-                  </fieldset>
-                  <label className="check-row"><input type="checkbox" checked={d.contents !== false} onChange={(e) => set('contents', e.target.checked)} /><span>Contents page</span></label>
-                  <label className="check-row"><input type="checkbox" checked={!!d.copyPages} onChange={(e) => set('copyPages', e.target.checked)} /><span>Student pages to copy, at the back of the teacher guide</span></label>
-                  <p className="muted cb-hint">Headers and footers show when printed. Marked words (the Blank button, or the highlighter in a lesson) print as blanks in the student book and answers in the teacher guide.</p>
-                </div>
-              )}
-              <button type="button" className={`cb-sec ${open === 'intro' ? 'is-open' : ''}`} onClick={() => setOpen(open === 'intro' ? null : 'intro')}>Introduction</button>
-              {open === 'intro' && (
-                <div className="cb-fields">
-                  <RichBox blanks headings html={d.intro ?? ''} onChange={(v) => set('intro', v.html)} rows={6} label="Introduction" placeholder="How to use this book, the series' aim, a word to the leader…" />
-                </div>
-              )}
-              <h3 className="cb-group">Lessons and pages <span className="muted">{included} of {book.lessons.length} lessons</span></h3>
-              {!book.lessons.length && <p className="muted cb-hint">This series has no lessons with notes yet. Add lessons to the series, then come back.</p>}
-              <ul className="cb-sections">
-                {sections.map((s, i) => (
-                  <li key={s.key} className={`cb-row cb-row-${s.type} ${s.skip ? 'is-skipped' : ''} ${target === s.key ? 'is-target' : ''} ${dragging === s.key ? 'is-dragging' : ''}`}
-                    draggable onDragStart={() => setDragging(s.key)} onDragEnd={() => setDragging(null)}
-                    onDragOver={(e) => { if (dragging) e.preventDefault(); }} onDrop={(e) => { e.preventDefault(); dropOn(s.key); }}>
-                    {s.type === 'lesson' ? lessonRow(s, i) : s.type === 'page' ? pageRow(s, i) : breakRow(s, i)}
-                  </li>
-                ))}
-              </ul>
-              <div className="cb-add">
-                <select className="input" value="" aria-label="Add a page" onChange={(e) => { const p = PAGE_KINDS[Number(e.target.value)]; if (p) addPage(p); }}>
-                  <option value="">+ Add a page…</option>
-                  {PAGE_KINDS.map((p, i) => <option key={i} value={i}>{p.title || 'Blank page'}</option>)}
-                </select>
-                <button type="button" className="btn btn-small" onClick={addBreak}>+ Page break</button>
+          {tab === 'insert' && (
+            <div className="cb-panel">
+              <p className="muted cb-hint">Elements go where the cursor is in the book.</p>
+              <h3 className="cb-group">Book</h3>
+              <div className="cb-tools">
+                {tool('New page', 'file', () => insertAtom({ type: 'pageBreak' }, true))}
+                {tool('Blank', 'highlight', () => run((c) => c.toggleHighlight()), { active: editor?.isActive('highlight'), title: 'Marked words are blanks in the student book and answers in the teacher guide' })}
+                {tool('Teacher only', 'lectern', () => toggleEdition('teacher'), { active: inEdition('teacher'), title: 'The selected blocks print only in the teacher guide' })}
+                {tool('Student only', 'users', () => toggleEdition('student'), { active: inEdition('student'), title: 'The selected blocks print only in the student book' })}
+                {tool('Leader note', 'comment', () => insertInto('<div data-edition="teacher"><h3>For the leader</h3><p></p></div>', 2))}
+                {tool('Discussion questions', 'list', () => insertInto('<h3>Discussion questions</h3><ol><li><p></p></li></ol>', 3))}
+                {tool('Answer box', 'todo', () => insertAtom({ type: 'writingLines', attrs: { count: 3, kind: 'box' } }))}
               </div>
-              <p className="muted cb-hint">New pages and breaks go after the one you have open. Drag rows, or use the arrows, to change the order.</p>
-              <button type="button" className="link-btn cb-delete" onClick={remove}>Delete this lesson book…</button>
-            </>
+              <div className="cb-lines">
+                <button type="button" className="cb-tool" onMouseDown={(e) => e.preventDefault()} onClick={() => insertAtom({ type: 'writingLines', attrs: { count: lines, kind: 'lines' } })}><Icon name="hr" size={15} /><span>Writing lines</span></button>
+                <label className="cb-lines-n"><input className="input" type="number" min="1" max="30" value={lines} onChange={(e) => setLines(Math.min(30, Math.max(1, Number(e.target.value) || 1)))} aria-label="How many lines" /> lines</label>
+              </div>
+              <h3 className="cb-group">Ready-made pages</h3>
+              <div className="cb-tools">
+                {PAGE_TEMPLATES.map((p) => <button key={p.label} type="button" className="cb-tool" onMouseDown={(e) => e.preventDefault()} onClick={() => insertTop(`<div data-page-break></div>${p.html}`)} draggable onDragStart={drag(`<div data-page-break></div>${p.html}`)}><Icon name="note" size={15} /><span>{p.label}</span></button>)}
+              </div>
+              <p className="muted cb-hint">Headings, lists, tables, callouts, pictures, quotes and Scripture are on the toolbar above the book (and / in the book).</p>
+            </div>
+          )}
+
+          {tab === 'lessons' && (
+            <div className="cb-panel">
+              <p className="muted cb-hint">A lesson is copied into the book, where you can change it. When the lesson changes, Update brings the book up to date.</p>
+              {!book.lessons.length && <p className="muted cb-hint">This series has no lessons with notes yet.</p>}
+              {book.lessons.map((l) => {
+                const synced = inBook.get(l.id);
+                const here = synced != null;
+                const changed = here && Number(l.updated_at) > synced;
+                return (
+                  <div key={l.id} className={`cb-lesson-item ${here ? 'is-in' : ''}`}>
+                    <div className="cb-lesson-title"><strong>{l.title}</strong><span className="muted">{here ? (changed ? 'Changed since it was copied' : 'In the book') : 'Not in the book'}</span></div>
+                    <div className="cb-lesson-tools">
+                      {here && <button type="button" className="btn btn-small" onClick={() => goTo(l.id)}>Go to</button>}
+                      {changed && <button type="button" className="btn btn-small btn-primary" onClick={() => updateLesson(l)}>Update from lesson</button>}
+                      {!here && <button type="button" className="btn btn-small" onClick={() => insertLesson(l)} draggable onDragStart={drag(`<div data-page-break></div>${lessonBlockHtml(l, inBook.size + 1)}`)}>Insert</button>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
 
           {tab === 'bank' && (
-            <div className="cb-bank">
-              <p className={`cb-target ${targetName ? '' : 'is-none'}`}>{targetName ? <>Inserting into <strong>{targetName}</strong></> : 'Open a lesson or page on the Book tab: pieces go into the one you last opened.'}</p>
+            <div className="cb-panel cb-bank">
+              <p className="muted cb-hint">Insert puts a piece at the cursor; you can also drag one into the book.</p>
               <h3 className="cb-group">This book’s pieces</h3>
-              <RichBox key={draftN} blanks html="" onChange={(v) => setDraft(v.html)} rows={2} label="New piece" placeholder="Write a point, question, illustration or activity to keep in this book's bank…" />
-              <button type="button" className="btn btn-small cb-bank-add" onClick={addPiece}>Add to bank</button>
+              <RichBox key={draftN} blanks html="" onChange={(v) => setDraft(v.html)} rows={2} label="New piece" placeholder="Write a point, question, illustration or activity to keep…" />
+              <div className="cb-bank-buttons">
+                <button type="button" className="btn btn-small" onClick={() => { addToBank(draft); setDraft(''); setDraftN((n) => n + 1); }}>Add to bank</button>
+                <button type="button" className="btn btn-small" onMouseDown={(e) => e.preventDefault()} onClick={() => { const h = selectionHtml(); if (h) addToBank(h); else dialog.toast('Select something in the book first.'); }}>Keep the selection</button>
+              </div>
               {(d.bank ?? []).map((p) => (
-                <div key={p.key} className="cb-piece cb-piece-mine">
+                <div key={p.key} className="cb-piece cb-piece-mine" draggable onDragStart={drag(p.html)}>
                   <div className="cb-piece-body" dangerouslySetInnerHTML={{ __html: p.html }} />
                   <div className="cb-piece-tools">
-                    <button type="button" className="btn btn-small" onClick={() => insert(p.html)}>Insert</button>
+                    <button type="button" className="btn btn-small" onMouseDown={(e) => e.preventDefault()} onClick={() => insertHtml(p.html)}>Insert</button>
                     <button type="button" className="icon-btn" aria-label="Remove from the bank" onClick={() => set('bank', d.bank.filter((x) => x.key !== p.key))}><Icon name="x" size={14} /></button>
                   </div>
                 </div>
@@ -378,37 +311,92 @@ function CurriculumBuilder({ id, close }) {
                   <option value="part">Whole parts</option>
                 </select>
               </h3>
-              {!shownPieces.length && <p className="muted cb-hint">Nothing of that kind in this book’s lessons.</p>}
-              {byLesson.map((from) => (
+              {[...new Set(shownPieces.map((p) => p.from))].map((from) => (
                 <div key={from} className="cb-bank-group">
                   <h4>{from}</h4>
                   {shownPieces.filter((p) => p.from === from).map((p) => (
-                    <div key={p.key} className={`cb-piece cb-piece-${p.kind}`}>
+                    <div key={p.key} className={`cb-piece cb-piece-${p.kind}`} draggable onDragStart={drag(p.html)}>
                       <span className="cb-piece-kind">{p.kind === 'part' ? 'Part' : p.kind === 'question' ? 'Question' : 'Point'}</span>
                       <span className="cb-piece-label">{p.label}</span>
-                      <button type="button" className="btn btn-small" onClick={() => insert(p.html)}>Insert</button>
+                      <button type="button" className="btn btn-small" onMouseDown={(e) => e.preventDefault()} onClick={() => insertHtml(p.html)}>Insert</button>
                     </div>
                   ))}
                 </div>
               ))}
             </div>
           )}
+
+          {tab === 'layout' && (
+            <div className="cb-panel">
+              <div className="cb-fields">
+                <label className="field">Page size
+                  <select className="input" value={d.size === 'half' ? 'half' : 'letter'} onChange={(e) => set('size', e.target.value)}>
+                    {Object.entries(SIZES).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}
+                  </select>
+                </label>
+                <div className="cb-two">
+                  <label className="field">Font
+                    <select className="input" value={FONTS[d.font] ? d.font : 'serif'} onChange={(e) => set('font', e.target.value)}>
+                      {Object.entries(FONTS).map(([k, f]) => <option key={k} value={k}>{f.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="field">Text size
+                    <select className="input" value={TEXT_SIZES.includes(Number(d.textSize)) ? d.textSize : ''} onChange={(e) => set('textSize', e.target.value ? Number(e.target.value) : null)}>
+                      <option value="">Usual</option>
+                      {TEXT_SIZES.map((n) => <option key={n} value={n}>{n} pt</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="field">Header
+                  <select className="input" value={d.header === 'title' ? 'title' : 'none'} onChange={(e) => set('header', e.target.value)}>
+                    <option value="none">None</option>
+                    <option value="title">The book’s title</option>
+                  </select>
+                </label>
+                <fieldset className="cb-foot">
+                  <legend>Footer</legend>
+                  <label className="check-row"><input type="checkbox" checked={foot.number !== false} onChange={(e) => set('footer', { ...foot, number: e.target.checked })} /><span>Page numbers</span></label>
+                  <label className="check-row"><input type="checkbox" checked={!!foot.church} onChange={(e) => set('footer', { ...foot, church: e.target.checked })} /><span>Church name{brand.name ? ` (${brand.name})` : ''}</span></label>
+                  <label className="check-row"><input type="checkbox" checked={!!foot.edition} onChange={(e) => set('footer', { ...foot, edition: e.target.checked })} /><span>Which book (Teacher guide, Student book)</span></label>
+                </fieldset>
+                <label className="check-row"><input type="checkbox" checked={d.contents !== false} onChange={(e) => set('contents', e.target.checked)} /><span>Contents page<span className="muted">Lists each Heading 1 in the book.</span></span></label>
+                <label className="check-row"><input type="checkbox" checked={!!d.copyPages} onChange={(e) => set('copyPages', e.target.checked)} /><span>Student pages to copy, at the back of the teacher guide</span></label>
+                <p className="muted cb-hint">The header and footer show when printed.</p>
+              </div>
+              <button type="button" className="link-btn cb-delete" onClick={remove}>Delete this lesson book…</button>
+            </div>
+          )}
         </aside>
-        <section className="cb-preview" aria-label="Preview">
-          <div className={`cb-paper cb-paper-${d.size === 'half' ? 'half' : 'letter'}`} dangerouslySetInnerHTML={{ __html: preview }} />
+
+        <section className="cb-preview" aria-label={view === 'edit' ? 'The book' : 'Preview'}>
+          {view === 'edit' ? (
+            <>
+              {editor && <div className="cb-toolbar"><Toolbar editor={editor} /></div>}
+              <div className={`cb-paper cb-paper-${d.size === 'half' ? 'half' : 'letter'}`}>
+                <div className="lesson-book lb-editing" style={Object.fromEntries(bookStyle(book, brand).split(';').map((p) => [p.slice(0, p.indexOf(':')), p.slice(p.indexOf(':') + 1)]))}>
+                  <section className="lb-cover lb-cover-edit">
+                    {brand.logo ? <img className="lb-logo" src={`/api/files/${Number(brand.logo)}`} alt="" /> : null}
+                    <input className="lb-title lb-cover-input" value={d.title ?? ''} onChange={(e) => set('title', e.target.value)} placeholder="Title" aria-label="Title" />
+                    <input className="lb-subtitle lb-cover-input" value={d.subtitle ?? ''} onChange={(e) => set('subtitle', e.target.value)} placeholder="Subtitle" aria-label="Subtitle" />
+                    <p className="lb-edition">Teacher guide · Student book</p>
+                    <input className="lb-by lb-cover-input" value={d.author ?? ''} onChange={(e) => set('author', e.target.value)} placeholder={brand.name ? `Written by (shown with ${brand.name})` : 'Written by'} aria-label="Written by" />
+                  </section>
+                  {d.contents !== false && (
+                    <section className="lb-contents lb-contents-auto">
+                      <h2>Contents <span className="muted">made from the book’s headings</span></h2>
+                      <ol>{headings.map((h, i) => <li key={i}>{h}</li>)}</ol>
+                    </section>
+                  )}
+                  <EditorContent editor={editor} />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className={`cb-paper cb-paper-${d.size === 'half' ? 'half' : 'letter'}`} dangerouslySetInnerHTML={{ __html: preview }} />
+          )}
         </section>
       </div>
     </div>
-  );
-}
-
-function PartRow({ name, teacher, student, onTeacher, onStudent }) {
-  return (
-    <>
-      <span className="cb-part-name">{name}</span>
-      <input type="checkbox" checked={teacher} aria-label={`${name} in the teacher guide`} onChange={(e) => onTeacher(e.target.checked)} />
-      <input type="checkbox" checked={student} aria-label={`${name} in the student book`} onChange={(e) => onStudent(e.target.checked)} />
-    </>
   );
 }
 
