@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import DeviceReadOnly from './components/DeviceReadOnly.jsx';
 import { canOpenSection, device } from './device.js';
 import { startLive, stopLive } from './live.js';
-import { forgetPush, isDesktopApp, notify, startReminders } from './desktop.js';
+import { forgetPush, forgetRunner, isDesktopApp, notify, startReminders } from './desktop.js';
 import { backToPairing, forgetDevice, isMobileApp, listenForQuickActions, listenForShares } from './mobile.js';
 import { canQueue, flushCaptureQueue, isOffline, queueCapture, saveCapture } from './captureSave.js';
 import MobileOffline from './components/MobileOffline.jsx';
@@ -118,7 +118,7 @@ export default function App() {
   return <>
     <MobileOffline />
     <Workspace themeState={themeState} cert={cert} signInNotice={signInNotice}
-      onLogout={async () => { await forgetPush(); await api.logout().catch(() => {}); await forgetDevice(); setAuth('login'); }} />
+      onLogout={async () => { await forgetPush(); await forgetRunner(); await api.logout().catch(() => {}); await forgetDevice(); setAuth('login'); }} />
   </>;
 }
 

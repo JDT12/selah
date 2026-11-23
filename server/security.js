@@ -172,7 +172,7 @@ export function requestChecks(app) {
       return;
     }
     // The Edge clipper uses its own key, good only for adding clips (see capture.js).
-    if (PUBLIC_API.has(url) || url === '/api/mobile/resume' || (clipper && clipToken(req))) return;
+    if (PUBLIC_API.has(url) || url === '/api/mobile/resume' || url === '/api/mobile/upcoming' || (clipper && clipToken(req))) return;
     h.bad++;
     return reply.code(401).send({ error: 'Not signed in' });
   });

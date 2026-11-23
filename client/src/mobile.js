@@ -85,17 +85,23 @@ export async function refreshReadCache(today) {
   if (!fs()) return;
   const old = await readCache();
   const known = new Map((old?.notes ?? []).map((n) => [n.id, n]));
-  const [recent, plans] = await Promise.all([
+  const [recent, plans, pins] = await Promise.all([
     getJson(`/api/notes?sort=updated&limit=${NOTE_LIMIT}`),
     getJson(`/api/plans?today=${encodeURIComponent(today)}`).catch(() => []),
+    getJson('/api/prefs/offlinePins').then((r) => (Array.isArray(r.value) ? r.value : [])).catch(() => []),
   ]);
+  // 14.4: pinned notes come first and always stay, beyond the most recent ones (offlinePins.js).
+  const pinned = new Set(pins);
+  const rows = [...pins.map((id) => recent.find((r) => r.id === id) ?? { id, updated_at: null }), ...recent.filter((r) => !pinned.has(r.id))];
   const notes = [];
-  for (const row of recent) {
+  for (const row of rows) {
     const have = known.get(row.id);
-    if (have && have.updated_at === row.updated_at) { notes.push(have); continue; }
+    if (have && row.updated_at != null && have.updated_at === row.updated_at && 'work' in have) { notes.push({ ...have, pinned: pinned.has(row.id) }); continue; }
     try {
       const n = await getJson(`/api/notes/${row.id}`);
-      notes.push({ id: n.id, title: n.title, html: n.html, updated_at: n.updated_at });
+      if (n.deleted_at) continue;
+      // work: a sermon, lesson or study (read-only offline); plain notes can be edited with no connection.
+      notes.push({ id: n.id, title: n.title, html: n.html, updated_at: n.updated_at, work: !!(n.builder && n.builder !== 'book') || !!n.is_template || !!n.read_only, pinned: pinned.has(n.id) });
     } catch { /* one note that won't load shouldn't stop the rest */ }
   }
   const body = {
@@ -126,6 +132,36 @@ export async function offlineWorkStatus() {
   if (!fs()) return null;
   const saved = await readWork();
   return saved ? { count: saved.work.length, savedAt: saved.saved_at } : null;
+}
+
+// 14.4: notes edited on the built-in offline page (mobile-app/www/shell.js), sent once Selah is reachable again.
+const EDITS_PATH = () => `selah-cache/${location.host}-edits.json`;
+
+/**
+ * Sends edits made with no connection; the server merges each into the note as it is now (server/offlineMerge.js).
+ * Resolves to { sent: [{ id, title, conflicts }], left } (left: ones that couldn't go yet, tried again later).
+ */
+export async function sendOfflineEdits(device = 'Phone') {
+  if (!fs()) return { sent: [], left: 0 };
+  let edits;
+  try { edits = JSON.parse((await fs().readFile({ path: EDITS_PATH(), directory: 'DATA', encoding: 'utf8' })).data).edits ?? []; } catch { return { sent: [], left: 0 }; }
+  if (!edits.length) return { sent: [], left: 0 };
+  const sent = [];
+  const left = [];
+  for (const e of edits) {
+    try {
+      const r = await fetch(`/api/notes/${e.id}/offline-merge`, {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base_html: e.base_html, base_title: e.base_title, html: e.html, title: e.title, device }),
+      });
+      if (r.ok) { const body = await r.json(); sent.push({ id: e.id, title: e.title, conflicts: body.conflicts ?? 0 }); }
+      else if (r.status === 404) sent.push({ id: e.id, title: e.title, conflicts: 0, gone: true });
+      else left.push(e);
+    } catch { left.push(e); }
+  }
+  if (left.length) await fs().writeFile({ path: EDITS_PATH(), data: JSON.stringify({ edits: left }), directory: 'DATA', encoding: 'utf8', recursive: true });
+  else await fs().deleteFile({ path: EDITS_PATH(), directory: 'DATA' }).catch(() => {});
+  return { sent, left: left.length };
 }
 
 /** Signing out takes this device's saved copies with it. */

@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { device } from '../device.js';
+import { keepOffline, offlinePins } from '../offlinePins.js';
 import { allowExactReminders, appReminderStatus, canNotify, isDesktopApp, remindersOn, scheduleAppReminders, setReminders, testNotification } from '../desktop.js';
 import { canLock, changeServer, isMobileApp, offlineWorkStatus, readLock, saveForOffline, setLock } from '../mobile.js';
 import { api, formatSize } from '../api.js';
@@ -170,6 +171,7 @@ export default function SettingsDialog({ theme, onTheme, cert, tree, onImported,
             </div>
             <MobileLockRow />
             <OfflineWorkRow />
+            <KeptOfflineRow />
             <StorageRow />
             <div className="about-row"><span className="muted">Connections, exports, imports and backups are on the web and in Selah Desktop.</span></div>
           </>
@@ -430,6 +432,36 @@ function OfflineWorkRow() {
     <div className="about-row">
       <span className="muted">{status ? `${status.count} ${status.count === 1 ? 'sermon or lesson' : 'sermons and lessons'} ready with no connection. Saved ${when}.` : 'Sermons and lessons on your calendar, and your most recent, are saved here for when there’s no connection.'}</span>
       <button type="button" className="btn btn-small" disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save now'}</button>
+    </div>
+  );
+}
+
+/** 14.4: what's pinned to stay on the phone and tablet (Keep offline in a note's ⋯ menu), with a way to unpin. */
+function KeptOfflineRow() {
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const ids = await offlinePins();
+      const list = await Promise.all(ids.map((id) => api.getNote(id).then((n) => (n.deleted_at ? null : { id, title: n.title || 'Untitled' })).catch(() => null)));
+      if (live) setRows(list.filter(Boolean));
+    })().catch(() => setRows([]));
+    return () => { live = false; };
+  }, []);
+  if (!rows) return null;
+  return (
+    <div className="about-row kept-offline">
+      <span className="muted">{rows.length ? 'Kept offline (always saved here):' : 'To keep a note, sermon or lesson here for sure, choose Keep offline in its ⋯ menu.'}</span>
+      {rows.length > 0 && (
+        <ul className="kept-list">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <span>{r.title}</span>
+              <button type="button" className="link-btn" onClick={() => keepOffline(r.id, false).then(() => setRows((x) => x.filter((y) => y.id !== r.id)))}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

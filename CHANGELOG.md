@@ -4,6 +4,23 @@ All notable changes to Note App are recorded here, newest first.
 
 ## [Unreleased]
 
+Selah 14.4: offline use and reminders.
+
+- **Keep offline**: any note, sermon or lesson can be pinned from its ⋯ menu (on any device; `pref.offlinePins`).
+  The phone and tablet apps always save pinned ones (the read cache and Preach/Teach delivery copies), beyond the ones
+  they pick by date; Settings in the app lists them.
+- **Editing with no connection**: a saved plain note opens with Edit on the app's built-in offline page (bold,
+  italic, headings, lists). The edit waits on the device with the note as it was saved, and goes when Selah opens
+  online: `POST /api/notes/:id/offline-merge` merges it block by block into the note as it is now
+  (`server/offlineMerge.js`, a three-way merge); where the same paragraph changed in both places, both are kept. The
+  note before is kept in Version history ("Before offline changes from Phone"), and a notice says the changes are in.
+  Sermons, lessons and studies stay read-only offline.
+- **Background refresh** in the apps (`@capacitor/background-runner`; Android about every 15 minutes, iOS when it
+  allows): adds reminders made elsewhere while the app is closed. It reads `GET /api/mobile/upcoming` with a key that
+  reads only reminders and ends with the device's sign-in (`server/mobileRefresh.js`). Android versionCode 13, iOS
+  build 14.
+- The app keeps at most 60 reminders scheduled (iOS allows 64); background refresh adds the next ones as they pass.
+
 ## [14.3.0] - 2026-11-22
 
 Selah 14.3 (in progress): live co-editing.

@@ -6,6 +6,7 @@ import { db, tx, unlinkStorage, getSetting, setSetting } from './db.js';
 import { config } from './config.js';
 import { lastEditor, liveSave, liveSaved } from './coedit.js';
 import { escapeHtml, htmlToText } from './html.js';
+import { mergeOffline } from './offlineMerge.js';
 import { setNoteTags, noteTags, TAG_COLORS, cleanTagName, mergeTag, dropUnusedTags } from './tags.js';
 import { importEnex } from './enex.js';
 import { MarkdownImport } from './markdown.js';
@@ -519,6 +520,8 @@ code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;wor
       if (isHeic(a.mime, a.filename)) note.html = note.html.replaceAll(`src="/api/files/${a.id}"`, `src="/api/files/${a.id}?jpg"`);
     }
     note.wordpress = db.prepare(`SELECT post_id, link, status FROM wp_posts WHERE note_id = ? AND status NOT IN ('trash', 'deleted')`).get(id) ?? null;
+    // 14.4: the builder method, if any (the phone and tablet app's saved copies edit only plain notes offline).
+    note.builder = db.prepare(`SELECT ${BUILDER_SQL} AS builder FROM notes n WHERE n.id = ?`).get(id)?.builder ?? null;
     return note;
   });
 
@@ -579,6 +582,28 @@ code{background:#fff;border:1px solid #ddd;border-radius:6px;padding:2px 6px;wor
       if (typeof b.title === 'string') renameLinks(id, before.title, b.title.slice(0, 500));
       if (live) liveSaved(id);
       return db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(id);
+    });
+  });
+
+  // 14.4: edits made in the phone or tablet app with no connection, merged into the note as it is now
+  // (offlineMerge.js). The note is kept in its version history first, and the save is an ordinary change, so anyone
+  // in the note live gets the merged version.
+  app.post('/api/notes/:id/offline-merge', async (req) => {
+    const id = intParam(req.params.id);
+    const b = req.body ?? {};
+    if (typeof b.base_html !== 'string' || typeof b.html !== 'string') throw httpError(400, 'base_html and html are needed');
+    const device = String(b.device ?? 'Phone').replace(/[^\w ’'-]/g, '').slice(0, 40) || 'Phone';
+    return tx(() => {
+      const now = db.prepare('SELECT title, html, deleted_at FROM notes WHERE id = ?').get(id);
+      if (!now) throw httpError(404, 'Note not found');
+      const merged = mergeOffline({ base: b.base_html, mine: b.html, theirs: now.html });
+      const title = typeof b.title === 'string' && typeof b.base_title === 'string' && b.title !== b.base_title && now.title === b.base_title
+        ? b.title.slice(0, 500) : now.title;
+      if (!merged.changed && title === now.title) return { ok: true, changed: false, conflicts: 0 };
+      snapshot(id, { reason: `Before offline changes from ${device}`, force: true });
+      db.prepare('UPDATE notes SET title = ?, html = ?, text = ?, updated_at = ? WHERE id = ?').run(title, merged.html, htmlToText(merged.html), Date.now(), id);
+      if (title !== now.title) renameLinks(id, now.title, title);
+      return { ok: true, changed: true, conflicts: merged.conflicts, deleted: !!now.deleted_at, updated_at: db.prepare('SELECT updated_at FROM notes WHERE id = ?').get(id).updated_at };
     });
   });
 

@@ -4,6 +4,16 @@
 // Add an entry here in every release that changes something people will notice.
 export const WHATS_NEW = [
   {
+    version: '14.4.0',
+    date: '',
+    title: 'Ready with no connection',
+    items: [
+      'Keep offline: choose it in a note’s ⋯ menu (on any device) and the phone and tablet apps always keep that note, sermon or lesson, ready for the pulpit or anywhere without Wi-Fi.',
+      'Edit saved notes in the app with no connection. When you’re back online your changes go in alongside anything changed elsewhere, nothing to choose; the note as it was stays in Version history.',
+      'Reminders added on the computer reach your phone even while the app is closed (background refresh).',
+    ],
+  },
+  {
     version: '14.3.0',
     date: '2026-11-22',
     title: 'Write together, live',

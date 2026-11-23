@@ -55,6 +55,7 @@ import { pickFilesNative } from '../desktop.js';
 import { canShare } from '../mode.js';
 import { openShare, openShareInstead } from './SharingDialogs.jsx';
 import { useCommentMarks } from './CommentThreads.jsx';
+import { isKeptOffline, keepOffline, offlinePins, onOfflinePins } from '../offlinePins.js';
 
 /**
  * Grips for single list items (see DragHandle below). Inside a list every grip is for one item (with its sub-items);
@@ -133,6 +134,15 @@ function LoadedNote({
   const [tags, setTags] = useState(note.tags);
   const [notebookId, setNotebookId] = useState(note.notebook_id);
   const [pinned, setPinned] = useState(!!note.pinned);
+  // 14.4: kept on the phone and tablet for use with no connection (offlinePins.js).
+  const [keptOffline, setKeptOffline] = useState(() => isKeptOffline(note.id));
+  useEffect(() => {
+    offlinePins().then(() => setKeptOffline(isKeptOffline(note.id))).catch(() => {});
+    return onOfflinePins(() => setKeptOffline(isKeptOffline(note.id)));
+  }, [note.id]);
+  const toggleOffline = () => keepOffline(note.id, !keptOffline)
+    .then((on) => dialog.toast(on ? 'Kept offline: the phone and tablet apps keep it saved, ready with no connection.' : 'No longer kept offline.'))
+    .catch((e) => dialog.toast(e.message, 'error'));
   const [onDashboard, setOnDashboard] = useState(!!note.dash_pinned);
   const [isTemplate, setIsTemplate] = useState(!!note.is_template);
   // A right-click on the note in the list can pin it too; the list entry then has the current state.
@@ -1159,6 +1169,7 @@ function LoadedNote({
             // On a phone the side panel's button is in here, to keep the bar to one row.
             phoneBar && { label: panel ? 'Close the side panel' : 'Side panel: outline, passage…', onClick: () => (panel ? setPanel(null) : openPanel(lastPanel)) },
             { label: 'Version history…', onClick: showHistory },
+            !isTemplate && { label: keptOffline ? 'Stop keeping offline' : 'Keep offline on phone and tablet', onClick: toggleOffline },
             !isTemplate && { label: showRevise ? 'Close Revise' : 'Revise…', onClick: toggleRevise },
             // Present, Preach/Teach and the builders are for sermons, lessons and studies; an ordinary note doesn't list them.
             !device.phone && builderNote && { label: 'Present', onClick: async () => { await flush(); presentNote(dialog, note.id); } },

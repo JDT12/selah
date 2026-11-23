@@ -195,20 +195,43 @@ export async function scheduleAppReminders() {
   if (!n) return 0;
   const pending = (await n.getPending().catch(() => ({ notifications: [] }))).notifications ?? [];
   if (pending.length) await n.cancel({ notifications: pending.map((p) => ({ id: p.id })) }).catch(() => {});
-  if (!remindersOn() || !(await permitted())) { reportPush([]); return 0; }
+  if (!remindersOn() || !(await permitted())) { reportPush([]); handToRunner({}); return 0; }
   const now = nowParts();
   const nowMin = wallMin(`${now.date}T${now.time}`);
   // `at` is wall-clock minutes in Selah's time zone (as UTC-mapped Dates, time.js); the device needs the real moment.
   const moment = (r) => fromWallClock(fmtDT(new Date(r.at * 60_000)));
   const items = (await agendaItems(now.date)).filter((r) => r.at > nowMin && moment(r) > Date.now() + 5000).sort((a, b) => a.at - b.at).slice(0, MAX_SCHEDULED);
-  if (!items.length) { reportPush([]); return 0; }
+  if (!items.length) { reportPush([]); handToRunner({}); return 0; }
   await n.schedule({ notifications: items.map((r) => ({
     id: idOf(r.key), title: r.title, body: r.body,
     schedule: { at: new Date(moment(r)), allowWhileIdle: true },
     extra: { open: typeof r.open === 'string' ? { section: r.open } : r.open },
   })) });
   reportPush(items);
+  handToRunner(Object.fromEntries(items.map((r) => [r.key, moment(r)])));
   return items.length;
+}
+
+// 14.4: background refresh (mobile-app/www/runners/background.js) adds reminders made elsewhere while the app is
+// closed. It runs without this page, so it gets the server, a key that can only read upcoming reminders
+// (server/mobileRefresh.js) and what's scheduled already.
+const runner = () => (local() ? window.Capacitor.Plugins?.BackgroundRunner ?? null : null);
+const RUNNER_LABEL = 'selah-background-refresh';
+let runnerKey = null;
+async function handToRunner(scheduled) {
+  const r = runner();
+  if (!r) return;
+  try {
+    if (!runnerKey) runnerKey = (await fetch(`/api/mobile/refresh-key?role=${device.role}`, { credentials: 'same-origin' }).then((x) => (x.ok ? x.json() : null)))?.key ?? null;
+    await r.dispatchEvent({ label: RUNNER_LABEL, event: 'selahSetup', details: { server: location.origin, key: runnerKey, reminders: remindersOn(), scheduled } });
+  } catch { /* an older app, or the runner isn't ready: reminders scheduled here still work */ }
+}
+
+/** Signing out: the background script stops (its key ends with the sign-in anyway). */
+export async function forgetRunner() {
+  const r = runner();
+  runnerKey = null;
+  if (r) await r.dispatchEvent({ label: RUNNER_LABEL, event: 'selahSetup', details: { server: '', key: '', reminders: false, scheduled: {} } }).catch(() => {});
 }
 
 // ---- the apps: push (13.0, server/push.js) ----

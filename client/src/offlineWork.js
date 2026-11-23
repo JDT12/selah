@@ -144,7 +144,12 @@ async function packetOf(row, old, ctx) {
 
 /** The packets for this device. `old` is what's saved now: anything unchanged is reused, and one that fails is kept. */
 export async function buildOfflineWork(today, old = []) {
-  const chosen = pickOfflineWork(await api.work(), today);
+  const rows = await api.work();
+  const picked = pickOfflineWork(rows, today);
+  // 14.4: pinned sermons and lessons always go too (offlinePins.js), after the ones picked by date.
+  const pins = new Set((await api.getPref('offlinePins').catch(() => null)) ?? []);
+  const have = new Set(picked.map((r) => r.note_id));
+  const chosen = [...picked, ...rows.filter((r) => (r.kind === 'sermon' || r.kind === 'lesson') && pins.has(r.note_id) && !have.has(r.note_id))];
   const before = new Map(old.map((w) => [w.id, w]));
   const ctx = { brand: await loadBrand(true), connected: await bibleConnected().catch(() => false), budget: { left: MAX_PICTURES } };
   const out = [];
