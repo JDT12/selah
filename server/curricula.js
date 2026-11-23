@@ -155,7 +155,8 @@ export default async function curricula(app) {
       // Per-lesson settings were keyed by the other Selah's note ids: moved to the new ones.
       const per = {};
       for (const [k, v] of Object.entries(book.lessons ?? {})) if (keys[k]) per[keys[k]] = v;
-      const data = { ...book, lessons: per };
+      const order = Array.isArray(book.order) ? book.order.map((k) => (String(k).startsWith('L:') ? (keys[String(k).slice(2)] ? `L:${keys[String(k).slice(2)]}` : null) : k)).filter(Boolean) : undefined;
+      const data = { ...book, lessons: per, ...(order ? { order } : {}) };
       const bookNote = Number(db.prepare('INSERT INTO notes (notebook_id, title, html, text, read_only, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)')
         .run(notebookId, title, '', '', now, now).lastInsertRowid);
       db.prepare(`INSERT OR IGNORE INTO study_notes (study_id, note_id, role, added_at) VALUES (?, ?, 'book', ?)`).run(studyId, bookNote, now);

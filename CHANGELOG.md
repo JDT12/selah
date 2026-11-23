@@ -16,6 +16,13 @@ Selah 14.5: the curriculum builder.
   that another Selah imports as a new series with its lessons and the book: the series menu → Import a lesson book),
   and **Share…** on Selah Ministry (the book is a read-only note holding the teacher guide). `server/curricula.js`,
   `client/src/lessonBook.js`, `CurriculumBuilder.jsx`; `npm run test:lesson-book`.
+- Lesson book customizing (after the first beta): **sections in any order** (drag or arrows), **custom pages**
+  (welcome, how to use, prayer requests, notes, answer key, or blank; in both books or one, with lines to write on),
+  **page breaks** (each lesson on a new page, or run on with breaks where you put them), **Blank** in the builder's
+  boxes (blanks in the student book, answers in the teacher guide), **parts of a lesson** per edition, **added
+  material** after a lesson, **fonts and text size**, a **header** (the book's title) and **footer** (page numbers,
+  church name, which book), and a **Bank** tab: the lessons' points, questions and whole parts, plus pieces you write,
+  inserted into the lesson or page last opened. RichBox takes `blanks` and `headings`.
 
 Selah 14.4: offline use and reminders.
 

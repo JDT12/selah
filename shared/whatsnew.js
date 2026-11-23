@@ -10,6 +10,8 @@ export const WHATS_NEW = [
     items: [
       'Turn a lesson or sermon series into a printed lesson book: open the series on Desk and choose Lesson book…. Cover, contents, an introduction and a section for each lesson are made from your lessons.',
       'One book, two editions: a teacher guide with the answers and your leader notes, and a student book with blanks and room to write. Highlight words in a lesson to make them blanks.',
+      'Make it yours: put lessons and your own pages (welcome, prayer requests, notes, an answer key) in any order, choose where pages break, pick the font and size, add a header and footer, and choose which parts of each lesson each book prints. The Blank button makes a blank anywhere.',
+      'The Bank tab gathers each lesson’s points, questions and parts, plus pieces you write, to drop into any lesson or page.',
       'Print it (or save a PDF) in letter size or as a half-letter booklet, save it as Word, or make a package another church can import into Selah and teach.',
     ],
   },
